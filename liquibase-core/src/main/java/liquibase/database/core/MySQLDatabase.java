@@ -1,6 +1,7 @@
 package liquibase.database.core;
 
 import liquibase.CatalogAndSchema;
+import liquibase.Scope;
 import liquibase.database.AbstractJdbcDatabase;
 import liquibase.database.DatabaseConnection;
 import liquibase.database.OfflineConnection;
@@ -8,8 +9,6 @@ import liquibase.database.jvm.JdbcConnection;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.executor.ExecutorService;
-import liquibase.logging.LogService;
-import liquibase.logging.LogType;
 import liquibase.statement.core.RawSqlStatement;
 import liquibase.structure.DatabaseObject;
 import liquibase.structure.core.Index;
@@ -86,8 +85,26 @@ public class MySQLDatabase extends AbstractJdbcDatabase {
 
     @Override
     public String getDefaultDriver(String url) {
-        if (url.startsWith("jdbc:mysql")) {
-            return "com.mysql.cj.jdbc.Driver";
+        if (url != null && url.toLowerCase().startsWith("jdbc:mysql")) {
+            String cjDriverClassName = "com.mysql.cj.jdbc.Driver";
+            try {
+
+                //make sure we don't have an old jdbc driver that doesn't have this class
+                Class.forName(cjDriverClassName);
+                return cjDriverClassName;
+            } catch (ClassNotFoundException e) {
+                //
+                // Try to load the class again with the current thread classloader
+                //
+                ClassLoader cl = Thread.currentThread().getContextClassLoader();
+                try {
+                    Class.forName(cjDriverClassName, true, cl);
+                    return cjDriverClassName;
+                } catch (ClassNotFoundException cnfe) {
+                    return "com.mysql.jdbc.Driver";
+                }
+            }
+
         }
         return null;
     }
@@ -278,7 +295,7 @@ public class MySQLDatabase extends AbstractJdbcDatabase {
                 }
                 if (rs.getShort("DEFERRABILITY") != DatabaseMetaData.importedKeyNotDeferrable) {
                     setHasJdbcConstraintDeferrableBug(true);
-                    LogService.getLog(getClass()).warning(LogType.LOG, "Your MySQL/MariaDB database JDBC driver might have " +
+                    Scope.getCurrentScope().getLog(getClass()).warning("Your MySQL/MariaDB database JDBC driver might have " +
                             "a bug where constraints are reported as DEFERRABLE, even though MySQL/MariaDB do not " +
                             "support this feature. A workaround for this problem will be used. Please check with " +
                             "MySQL/MariaDB for availability of fixed JDBC drivers to avoid this warning.");
@@ -323,21 +340,25 @@ public class MySQLDatabase extends AbstractJdbcDatabase {
             minor = getDatabaseMinorVersion();
             patch = getDatabasePatchVersion();
         } catch (DatabaseException x) {
-            LogService.getLog(getClass()).warning(
-                    LogType.LOG, "Unable to determine exact database server version"
+            Scope.getCurrentScope().getLog(getClass()).warning(
+                    "Unable to determine exact database server version"
                             + " - specified TIMESTAMP precision"
                             + " will not be set: ", x);
             return 0;
         }
 
-        // MySQL 5.6.4 introduced fractional support...
-        // https://dev.mysql.com/doc/refman/5.7/en/data-types.html
-        String minimumVersion = "5.6.4";
+        String minimumVersion = getMinimumVersionForFractionalDigitsForTimestamp();
 
         if (StringUtil.isMinimumVersion(minimumVersion, major, minor, patch))
             return 6;
         else
             return 0;
+    }
+
+    protected String getMinimumVersionForFractionalDigitsForTimestamp() {
+        // MySQL 5.6.4 introduced fractional support...
+        // https://dev.mysql.com/doc/refman/5.7/en/data-types.html
+        return "5.6.4";
     }
 
     @Override

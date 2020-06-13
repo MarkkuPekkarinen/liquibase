@@ -2,7 +2,13 @@
 // Copyright: Copyright(c) 2007 Trace Financial Limited
 package org.liquibase.maven.plugins;
 
+import liquibase.Scope;
 import liquibase.exception.LiquibaseException;
+import liquibase.license.Location;
+import liquibase.license.LocationType;
+import liquibase.license.LicenseService;
+import liquibase.license.LicenseServiceFactory;
+import liquibase.license.LicenseInstallResult;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.maven.project.MavenProject;
@@ -86,6 +92,43 @@ public class MavenUtils {
     return new URLClassLoader(urlArray, clazz.getClassLoader());
   }
 
+  public static boolean checkProLicense(String liquibaseProLicenseKey, String commandName, Log log) {
+      boolean hasProLicense = true;
+      LicenseService licenseService = Scope.getCurrentScope().getSingleton(LicenseServiceFactory.class).getLicenseService();
+      if (licenseService == null) {
+        return false;
+      }
+      if (liquibaseProLicenseKey == null) {
+          log.info("");
+          if (commandName != null) {
+            log.info("The command '" + commandName + "' requires a Liquibase Pro License, available at http://liquibase.org.");
+          }
+          log.info("");
+          hasProLicense = false;
+      } else {
+          Location licenseKeyLocation = 
+              new Location("property liquibaseProLicenseKey", LocationType.BASE64_STRING, liquibaseProLicenseKey);
+          LicenseInstallResult result = licenseService.installLicense(licenseKeyLocation);
+          if (result.code != 0) {
+              String allMessages = String.join("\n", result.messages);
+              log.warn(allMessages);
+              hasProLicense = false;
+          }
+          String licenseInfo = licenseService.getLicenseInfo();
+          log.info(licenseInfo);
+
+          //
+          // If the license has expired then just disable the service
+          //
+          if (licenseService.daysTilExpiration() < 0) {
+              licenseService.disable();
+              hasProLicense = false;
+          }
+      }
+      log.info(licenseService.getLicenseInfo());
+      return hasProLicense;
+  }
+
   /**
    * Adds the artifact file into the set of URLs so it can be used in a URLClassLoader.
    * @param urls The set to add the artifact file URL to.
@@ -137,14 +180,14 @@ public class MavenUtils {
     try {
       dbDriver = (Driver)Class.forName(driver,
                                        true,
-                                       classLoader).newInstance();
+                                       classLoader).getConstructor().newInstance();
     }
-    catch (InstantiationException | IllegalAccessException e) {
-      throw new LiquibaseException("Failed to load JDBC driver, " + driver, e);
-    } catch (ClassNotFoundException e) {
+    catch (ClassNotFoundException e) {
       throw new LiquibaseException("Missing Class '" + e.getMessage() + "'. Database "
                                    + "driver may not be included in the project "
                                    + "dependencies or with wrong scope.");
+    } catch (ReflectiveOperationException e) {
+      throw new LiquibaseException("Failed to load JDBC driver, " + driver, e);
     }
 
     Properties info = new Properties();

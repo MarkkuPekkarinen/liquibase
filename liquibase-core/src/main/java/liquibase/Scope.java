@@ -4,16 +4,23 @@ import liquibase.database.Database;
 import liquibase.database.DatabaseConnection;
 import liquibase.database.OfflineConnection;
 import liquibase.database.jvm.JdbcConnection;
+import liquibase.diff.output.changelog.DiffToChangeLog;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.listener.LiquibaseListener;
 import liquibase.logging.LogService;
+import liquibase.logging.Logger;
+import liquibase.logging.core.JavaLogService;
+import liquibase.logging.core.LogServiceFactory;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import liquibase.resource.ResourceAccessor;
 import liquibase.servicelocator.ServiceLocator;
 import liquibase.servicelocator.StandardServiceLocator;
+import liquibase.ui.ConsoleUIService;
+import liquibase.ui.UIService;
 import liquibase.util.SmartMap;
 
 import java.lang.reflect.Constructor;
+import java.nio.charset.Charset;
 import java.util.*;
 
 /**
@@ -29,6 +36,8 @@ public class Scope {
      * Enumeration containing standard attributes. Normally use methods like convenience {@link #getResourceAccessor()} or {@link #getDatabase()}
      */
     public enum Attr {
+        logService,
+        ui,
         resourceAccessor,
         classLoader,
         database,
@@ -36,7 +45,11 @@ public class Scope {
         changeLogHistoryService,
         lockService,
         executeMode,
-        lineSeparator, serviceLocator,
+        lineSeparator,
+        serviceLocator,
+        fileEncoding,
+        databaseChangeLog,
+        changeSet,
     }
 
     private static ScopeManager scopeManager;
@@ -49,7 +62,14 @@ public class Scope {
     public static Scope getCurrentScope() {
         if (scopeManager == null) {
             scopeManager = new SingletonScopeManager();
-            scopeManager.setCurrentScope(new Scope());
+            Scope rootScope = new Scope();
+            scopeManager.setCurrentScope(rootScope);
+
+            LogService overrideLogService = rootScope.getSingleton(LogServiceFactory.class).getDefaultLogService();
+            if (overrideLogService == null) {
+                throw new UnexpectedLiquibaseException("Cannot find default log service");
+            }
+            rootScope.values.put(Attr.logService.name(), overrideLogService);
         }
         return scopeManager.getCurrentScope();
     }
@@ -63,7 +83,7 @@ public class Scope {
         try {
             currentScope = scopeManager.init(currentScope);
         } catch (Exception e) {
-            LogService.getLog(Scope.class).warning(e.getMessage(), e);
+            Scope.getCurrentScope().getLog(Scope.class).warning(e.getMessage(), e);
         }
         scopeManager.setCurrentScope(currentScope);
 
@@ -78,9 +98,10 @@ public class Scope {
      * Defaults serviceLocator to {@link StandardServiceLocator}
      */
     private Scope() {
+        values.put(Attr.logService.name(), new JavaLogService());
         values.put(Attr.resourceAccessor.name(), new ClassLoaderResourceAccessor());
         values.put(Attr.serviceLocator.name(), new StandardServiceLocator());
-
+        values.put(Attr.ui.name(), new ConsoleUIService());
     }
 
     protected Scope(Scope parent, Map<String, Object> scopeValues) {
@@ -107,6 +128,13 @@ public class Scope {
     }
 
     /**
+     * Creates a new scope that is a child of this scope.
+     */
+    public static <ReturnType> ReturnType child(Map<String, Object> scopeValues, ScopedRunnerWithReturn<ReturnType> runner) throws Exception {
+        return child(null, scopeValues, runner);
+    }
+
+    /**
      * Creates a new child scope that includes the given {@link LiquibaseListener}.
      * You cannot unassign a listener, they simply fall out of scope when the Scope does.
      *
@@ -117,12 +145,19 @@ public class Scope {
     }
 
     public static void child(LiquibaseListener listener, Map<String, Object> scopeValues, ScopedRunner runner) throws Exception{
+        child(listener, scopeValues, () -> {
+            runner.run();
+            return null;
+        });
+    }
+
+    public static <T> T child(LiquibaseListener listener, Map<String, Object> scopeValues, ScopedRunnerWithReturn<T> runner) throws Exception{
         Scope originalScope = getCurrentScope();
         Scope child = new Scope(originalScope, scopeValues);
         child.listener = listener;
         try {
             scopeManager.setCurrentScope(child);
-            runner.run();
+            return runner.run();
         } finally {
             scopeManager.setCurrentScope(originalScope);
         }
@@ -131,14 +166,14 @@ public class Scope {
     /**
      * Creates a new scope that is a child of this scope.
      */
-    public void child(String newValueKey, Object newValue, ScopedRunner runner) throws Exception {
+    public static void child(String newValueKey, Object newValue, ScopedRunner runner) throws Exception {
         Map<String, Object> scopeValues = new HashMap<String, Object>();
         scopeValues.put(newValueKey, newValue);
 
         child(scopeValues, runner);
     }
 
-    public void child(Enum newValueKey, Object newValue, ScopedRunner runner) throws Exception {
+    public static void child(Enum newValueKey, Object newValue, ScopedRunner runner) throws Exception {
         child(newValueKey.name(), newValue, runner);
     }
 
@@ -229,12 +264,20 @@ public class Scope {
         return singleton;
     }
 
+    public Logger getLog(Class clazz) {
+        return get(Attr.logService, LogService.class).getLog(clazz);
+    }
+
+    public UIService getUI() {
+        return get(Attr.ui, UIService.class);
+    }
+
     public Database getDatabase() {
         return get(Attr.database, Database.class);
     }
 
     public ClassLoader getClassLoader() {
-        return get(Attr.classLoader, ClassLoader.class);
+        return get(Attr.classLoader, Thread.currentThread().getContextClassLoader());
     }
 
     public ClassLoader getClassLoader(boolean fallbackToContextClassLoader) {
@@ -257,6 +300,9 @@ public class Scope {
         return get(Attr.lineSeparator, System.lineSeparator());
     }
 
+    public Charset getFileEncoding() {
+        return get(Attr.fileEncoding, Charset.defaultCharset());
+    }
 
     /**
      * Returns {@link LiquibaseListener}s defined in this scope and/or all its parents that are of the given type.
@@ -298,8 +344,10 @@ public class Scope {
         return "scope(database=" + databaseName + ")";
     }
 
-    public interface ScopedRunner {
+    public interface ScopedRunner<T> {
         void run() throws Exception;
     }
-
+    public interface ScopedRunnerWithReturn<T> {
+        T run() throws Exception;
+    }
 }

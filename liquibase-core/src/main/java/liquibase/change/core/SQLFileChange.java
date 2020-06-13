@@ -1,5 +1,6 @@
 package liquibase.change.core;
 
+import liquibase.Scope;
 import liquibase.change.AbstractSQLChange;
 import liquibase.change.ChangeMetaData;
 import liquibase.change.DatabaseChange;
@@ -10,6 +11,7 @@ import liquibase.exception.SetupException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.resource.ResourceAccessor;
+import liquibase.util.ObjectUtil;
 import liquibase.util.StreamUtil;
 import liquibase.util.StringUtil;
 
@@ -19,9 +21,6 @@ import java.io.InputStream;
 /**
  * Represents a Change for custom SQL stored in a File.
  * <p/>
- * To create an instance call the constructor as normal and then call
- * {@link AbstractSQLChange#setResourceAccessor(ResourceAccessor)} before calling setPath, otherwise the
- * file will likely not be found.
  */
 @DatabaseChange(name = "sqlFile",
         description = "The 'sqlFile' tag allows you to specify any sql statements and have it stored external in a " +
@@ -116,8 +115,11 @@ public class SQLFileChange extends AbstractSQLChange {
 
         InputStream inputStream = null;
         try {
-            inputStream = StreamUtil.openStream(path, isRelativeToChangelogFile(),
-                getChangeSet(), getResourceAccessor());
+            String relativeTo = null;
+            if (ObjectUtil.defaultIfNull(isRelativeToChangelogFile(), false)) {
+                relativeTo = getChangeSet().getFilePath();
+            }
+            inputStream = Scope.getCurrentScope().getResourceAccessor().openStream(relativeTo, path);
         } catch (IOException e) {
             throw new IOException("Unable to read file '" + path + "'", e);
         }
@@ -152,7 +154,7 @@ public class SQLFileChange extends AbstractSQLChange {
                 if (sqlStream == null) {
                     return null;
                 }
-                String content = StreamUtil.getStreamContents(sqlStream, encoding);
+                String content = StreamUtil.readStreamAsString(sqlStream);
                 if (getChangeSet() != null) {
                     ChangeLogParameters parameters = getChangeSet().getChangeLogParameters();
                     if (parameters != null) {

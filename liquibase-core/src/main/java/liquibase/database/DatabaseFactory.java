@@ -5,8 +5,6 @@ import liquibase.database.core.UnsupportedDatabase;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.UnexpectedLiquibaseException;
-import liquibase.logging.LogService;
-import liquibase.logging.LogType;
 import liquibase.logging.Logger;
 import liquibase.resource.ResourceAccessor;
 import liquibase.util.StringUtil;
@@ -18,7 +16,7 @@ import java.sql.Driver;
 import java.util.*;
 
 public class DatabaseFactory {
-    private static final Logger LOG = LogService.getLog(DatabaseFactory.class);
+    private static final Logger LOG = Scope.getCurrentScope().getLog(DatabaseFactory.class);
     private static DatabaseFactory instance;
     private Map<String, SortedSet<Database>> implementedDatabases = new HashMap<>();
     private Map<String, SortedSet<Database>> internalDatabases = new HashMap<>();
@@ -106,7 +104,7 @@ public class DatabaseFactory {
         }
 
         if (foundDatabases.isEmpty()) {
-            LOG.warning(LogType.LOG, "Unknown database: " + connection.getDatabaseProductName());
+            LOG.warning("Unknown database: " + connection.getDatabaseProductName());
             UnsupportedDatabase unsupportedDB = new UnsupportedDatabase();
             unsupportedDB.setConnection(connection);
             return unsupportedDB;
@@ -114,7 +112,7 @@ public class DatabaseFactory {
 
         Database returnDatabase;
         try {
-            returnDatabase = foundDatabases.iterator().next().getClass().newInstance();
+            returnDatabase = foundDatabases.iterator().next().getClass().getConstructor().newInstance();
         } catch (Exception e) {
             throw new UnexpectedLiquibaseException(e);
         }
@@ -176,7 +174,7 @@ public class DatabaseFactory {
             DatabaseFactory databaseFactory = DatabaseFactory.getInstance();
             if (databaseClass != null) {
                 databaseFactory.clearRegistry();
-                databaseFactory.register((Database) Class.forName(databaseClass, true, resourceAccessor.toClassLoader()).newInstance());
+                databaseFactory.register((Database) Class.forName(databaseClass, true, Scope.getCurrentScope().getClassLoader()).getConstructor().newInstance());
             }
 
             try {
@@ -188,7 +186,7 @@ public class DatabaseFactory {
                     throw new RuntimeException("Driver class was not specified and could not be determined from the url (" + url + ")");
                 }
 
-                driverObject = (Driver) Class.forName(driver, true, resourceAccessor.toClassLoader()).newInstance();
+                driverObject = (Driver) Class.forName(driver, true, Scope.getCurrentScope().getClassLoader()).getConstructor().newInstance();
             } catch (Exception e) {
                 throw new RuntimeException("Cannot find database driver: " + e.getMessage());
             }
@@ -201,7 +199,7 @@ public class DatabaseFactory {
             if (propertyProviderClass == null) {
                 driverProperties = new Properties();
             } else {
-                driverProperties = (Properties) Class.forName(propertyProviderClass, true, resourceAccessor.toClassLoader()).newInstance();
+                driverProperties = (Properties) Class.forName(propertyProviderClass, true, Scope.getCurrentScope().getClassLoader()).getConstructor().newInstance();
             }
 
             if (username != null) {
@@ -213,8 +211,8 @@ public class DatabaseFactory {
             if (null != driverPropertiesFile) {
                 File propertiesFile = new File(driverPropertiesFile);
                 if (propertiesFile.exists()) {
-                    LOG.debug(
-                            LogType.LOG, "Loading properties from the file:'" + driverPropertiesFile + "'"
+                    LOG.fine(
+                            "Loading properties from the file:'" + driverPropertiesFile + "'"
                     );
                     FileInputStream inputStream = new FileInputStream(propertiesFile);
                     try {
@@ -229,15 +227,24 @@ public class DatabaseFactory {
             }
 
 
-            LOG.debug(LogType.LOG, "Properties:");
+            LOG.fine("Properties:");
             for (Map.Entry entry : driverProperties.entrySet()) {
-                LOG.debug(LogType.LOG, "Key:'" + entry.getKey().toString() + "' Value:'" + entry.getValue().toString() + "'");
+                if (entry.getKey().toString().toLowerCase().contains("password")) {
+                    Scope.getCurrentScope().getLog(getClass()).fine("Key:'" + entry.getKey().toString() + "' Value:'**********'");
+                } else {
+                    LOG.fine("Key:'" + entry.getKey().toString() + "' Value:'" + entry.getValue().toString() + "'");
+                }
             }
 
+            if(driver.contains("oracle")) {
+              driverProperties.put("remarksReporting", "true");
+            } else if(driver.contains("mysql")) {
+              driverProperties.put("useInformationSchema", "true");
+            }
 
-            LOG.debug(LogType.LOG, "Connecting to the URL:'" + url + "' using driver:'" + driverObject.getClass().getName() + "'");
+            LOG.fine("Connecting to the URL:'" + url + "' using driver:'" + driverObject.getClass().getName() + "'");
             Connection connection = driverObject.connect(url, driverProperties);
-            LOG.debug(LogType.LOG, "Connection has been created");
+            LOG.fine("Connection has been created");
             if (connection == null) {
                 throw new DatabaseException("Connection could not be created to " + url + " with driver " + driverObject.getClass().getName() + ".  Possibly the wrong driver for the given database URL");
             }

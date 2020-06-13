@@ -208,12 +208,12 @@ public class ForeignKeySnapshotGenerator extends JdbcSnapshotGenerator {
                     throw new RuntimeException("Unknown deferrability result: " + deferrability);
                 }
                 setValidateOptionIfAvailable(database, foreignKey, row);
-                if (database.createsIndexesForForeignKeys()) {
-                    Index exampleIndex = new Index().setRelation(foreignKey.getForeignKeyTable());
-                    exampleIndex.getColumns().addAll(foreignKey.getForeignKeyColumns());
-                    exampleIndex.addAssociatedWith(Index.MARK_FOREIGN_KEY);
-                    foreignKey.setBackingIndex(exampleIndex);
-                }
+
+                Index exampleIndex = new Index().setRelation(foreignKey.getForeignKeyTable());
+                exampleIndex.getColumns().addAll(foreignKey.getForeignKeyColumns());
+                exampleIndex.addAssociatedWith(Index.MARK_FOREIGN_KEY);
+                foreignKey.setBackingIndex(exampleIndex);
+
             }
             if (snapshot.get(ForeignKey.class).contains(foreignKey)) {
                 return null;
@@ -310,7 +310,7 @@ public class ForeignKeySnapshotGenerator extends JdbcSnapshotGenerator {
                 return false;
             }
 
-            if (driverMajorVersion >= 6 && driverMinorVersion >= 3) {
+            if (driverMajorVersion > 6 || (driverMajorVersion == 6 && driverMinorVersion >= 3)) {
                 return false;
             }
 

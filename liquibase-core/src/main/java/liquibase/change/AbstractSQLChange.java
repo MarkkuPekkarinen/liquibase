@@ -1,5 +1,7 @@
 package liquibase.change;
 
+import liquibase.change.core.RawSQLChange;
+import liquibase.Scope;
 import liquibase.configuration.GlobalConfiguration;
 import liquibase.configuration.LiquibaseConfiguration;
 import liquibase.database.Database;
@@ -8,8 +10,6 @@ import liquibase.exception.DatabaseException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.exception.Warnings;
-import liquibase.logging.LogService;
-import liquibase.logging.LogType;
 import liquibase.statement.SqlStatement;
 import liquibase.statement.core.RawSqlStatement;
 import liquibase.util.StringUtil;
@@ -192,7 +192,7 @@ public abstract class AbstractSQLChange extends AbstractChange implements DbmsTa
                 try {
                     stream.close();
                 } catch (IOException e) {
-                    LogService.getLog(getClass()).debug(LogType.LOG, "Error closing stream", e);
+                    Scope.getCurrentScope().getLog(getClass()).fine("Error closing stream", e);
                 }
             }
         }
@@ -217,6 +217,10 @@ public abstract class AbstractSQLChange extends AbstractChange implements DbmsTa
         }
 
         String processedSQL = normalizeLineEndings(sql);
+        if (this instanceof RawSQLChange && ((RawSQLChange) this).isRerunnable()) {
+            returnStatements.add(new RawSqlStatement(processedSQL, getEndDelimiter()));
+            return returnStatements.toArray(new SqlStatement[returnStatements.size()]);
+        }
         for (String statement : StringUtil.processMutliLineSQL(processedSQL, isStripComments(), isSplitStatements(), getEndDelimiter())) {
             if (database instanceof MSSQLDatabase) {
                  statement = statement.replaceAll("\\n", "\r\n");

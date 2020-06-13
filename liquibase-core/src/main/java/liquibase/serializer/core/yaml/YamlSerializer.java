@@ -160,9 +160,6 @@ public abstract class YamlSerializer implements LiquibaseSerializer {
         json = json.replaceAll("!!timestamp \"([^\"]*)\"", "$1");
         json = json.replaceAll("!!float \"([^\"]*)\"", "$1");
         json = json.replaceAll("!!liquibase.[^\\s]+ (\"\\w+\")", "$1");
-        if (json.contains("!!")) {
-            throw new IllegalStateException(String.format("Serialize failed. Illegal char on %s position: %s", json.indexOf("!!"), json));
-        }
         return json;
     }
 
@@ -186,11 +183,11 @@ public abstract class YamlSerializer implements LiquibaseSerializer {
                 if (type.equals(ChangeSet.class)) {
                     serialzableType = new ChangeSet("x", "y", false, false, null, null, null, null);
                 } else if (LiquibaseSerializable.class.isAssignableFrom(type)) {
-                    serialzableType = (LiquibaseSerializable) type.newInstance();
+                    serialzableType = (LiquibaseSerializable) type.getConstructor().newInstance();
                 } else {
                     return super.getProperties(type);
                 }
-            } catch (InstantiationException | IllegalAccessException e) {
+            } catch (ReflectiveOperationException e) {
                 throw new UnexpectedLiquibaseException(e);
             }
             for (String property : serialzableType.getSerializableFields()) {

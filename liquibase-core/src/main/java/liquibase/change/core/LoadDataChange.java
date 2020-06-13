@@ -1,6 +1,7 @@
 package liquibase.change.core;
 
 import liquibase.CatalogAndSchema;
+import liquibase.Scope;
 import liquibase.change.*;
 import liquibase.changelog.ChangeSet;
 import liquibase.database.AbstractJdbcDatabase;
@@ -12,16 +13,14 @@ import liquibase.datatype.DataTypeFactory;
 import liquibase.datatype.LiquibaseDataType;
 import liquibase.exception.DatabaseException;
 import liquibase.exception.DateParseException;
+import liquibase.exception.LiquibaseException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.exception.Warnings;
 import liquibase.executor.ExecutorService;
 import liquibase.executor.LoggingExecutor;
 import liquibase.io.EmptyLineAndCommentSkippingInputStream;
-import liquibase.logging.LogService;
-import liquibase.logging.LogType;
 import liquibase.logging.Logger;
 import liquibase.resource.ResourceAccessor;
-import liquibase.resource.UtfBomAwareReader;
 import liquibase.snapshot.InvalidExampleException;
 import liquibase.snapshot.SnapshotGeneratorFactory;
 import liquibase.statement.BatchDmlExecutablePreparedStatement;
@@ -35,6 +34,7 @@ import liquibase.structure.core.Column;
 import liquibase.structure.core.DataType;
 import liquibase.structure.core.Table;
 import liquibase.util.BooleanParser;
+import liquibase.util.ObjectUtil;
 import liquibase.util.StreamUtil;
 import liquibase.util.StringUtil;
 import liquibase.util.csv.CSVReader;
@@ -67,7 +67,8 @@ import static java.util.ResourceBundle.getBundle;
             "Once the date format string is set, Liquibase will then call the SimpleDateFormat.parse() method " +
                 "attempting to parse the input string so that it can return a Date/Time. If problems occur, " +
                 "then a ParseException is thrown and the input string is treated as a String for the INSERT command " +
-                "to be generated.",
+                "to be generated.\n" +
+                "If UUID type is used UUID value is stored as string and NULL in cell is supported. Column config should be used in xml.",
         priority = ChangeMetaData.PRIORITY_DEFAULT, appliesTo = "table",
         since = "1.7")
 public class LoadDataChange extends AbstractChange implements ChangeWithColumns<LoadDataColumnConfig> {
@@ -75,7 +76,7 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
      * CSV Lines starting with that sign(s) will be treated as comments by default
      */
     public static final String DEFAULT_COMMENT_PATTERN = "#";
-    private static final Logger LOG = LogService.getLog(LoadDataChange.class);
+    private static final Logger LOG = Scope.getCurrentScope().getLog(LoadDataChange.class);
     private static ResourceBundle coreBundle = getBundle("liquibase/i18n/liquibase-core");
     private String catalogName;
     private String schemaName;
@@ -414,6 +415,13 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
                                     valueConfig.setValueClobFile(value.toString());
                                     needsPreparedStatement = true;
                                 }
+                            } else if (columnConfig.getType().equalsIgnoreCase(LOAD_DATA_TYPE.UUID.toString())) {
+                                valueConfig.setType(columnConfig.getType());
+                                if ("NULL".equalsIgnoreCase(value.toString())) {
+                                    valueConfig.setValue(null);
+                                } else {
+                                    valueConfig.setValue(value.toString());
+                                }                                
                             } else {
                                 throw new UnexpectedLiquibaseException(
                                     String.format(coreBundle.getString("loaddata.type.is.not.supported"),
@@ -457,7 +465,7 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
                     ExecutablePreparedStatementBase stmt =
                         this.createPreparedStatement(
                             database, getCatalogName(), getSchemaName(), getTableName(), columnsFromCsv,
-                            getChangeSet(), getResourceAccessor()
+                            getChangeSet(), Scope.getCurrentScope().getResourceAccessor()
                         );
                     batchedStatements.add(stmt);
                 } else {
@@ -489,7 +497,7 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
                             new BatchDmlExecutablePreparedStatement(
                                     database, getCatalogName(), getSchemaName(),
                                     getTableName(), columns,
-                                    getChangeSet(), getResourceAccessor(),
+                                    getChangeSet(), Scope.getCurrentScope().getResourceAccessor(),
                                     batchedStatements)
                     };
                 } else {
@@ -523,12 +531,12 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
                     return statementSet.getStatementsArray();
                 }
             }
-        } catch (IOException e) {
+        } catch (IOException | LiquibaseException e) {
             throw new RuntimeException(e);
         } catch (UnexpectedLiquibaseException ule) {
             if ((getChangeSet() != null) && (getChangeSet().getFailOnError() != null) && !getChangeSet()
                 .getFailOnError()) {
-                LOG.info(LogType.LOG, "Change set " + getChangeSet().toString(false) +
+                LOG.info("Change set " + getChangeSet().toString(false) +
                          " failed, but failOnError was false.  Error: " + ule.getMessage());
                 return new SqlStatement[0];
             } else {
@@ -584,7 +592,7 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
             throw new DatabaseException(e);
         }
         if (snapshotOfTable == null) {
-            LOG.warning(LogType.LOG, String.format(
+            LOG.warning(String.format(
                     coreBundle.getString("could.not.snapshot.table.to.get.the.missing.column.type.information"),
                     database.escapeTableName(
                             targetTable.getSchema().getCatalogName(),
@@ -626,7 +634,7 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
             LoadDataColumnConfig columnConfig = entry.getValue();
             DataType dataType = tableColumns.get(entry.getKey()).getType();
             if (dataType == null) {
-                LOG.warning(LogType.LOG, String.format(coreBundle.getString("unable.to.find.load.data.type"),
+                LOG.warning(String.format(coreBundle.getString("unable.to.find.load.data.type"),
                     columnConfig.toString(), snapshotOfTable.toString()));
                 columnConfig.setType(LOAD_DATA_TYPE.STRING.toString());
             } else {
@@ -635,8 +643,8 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
                 if (liquibaseDataType != null) {
                     columnConfig.setType(liquibaseDataType.getLoadTypeName().toString());
                 } else {
-                    LOG.warning(LogType.LOG, String.format(coreBundle.getString("unable.to.convert.load.data.type"),
-                        columnConfig.toString(), snapshotOfTable.toString(), liquibaseDataType.toString()));
+                    LOG.warning(String.format(coreBundle.getString("unable.to.convert.load.data.type"),
+                        columnConfig.toString(), snapshotOfTable.toString(), dataType.toString()));
                 }
             }
         }
@@ -695,21 +703,17 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
         return true;
     }
 
-    public CSVReader getCSVReader() throws IOException {
-        ResourceAccessor resourceAccessor = getResourceAccessor();
+    public CSVReader getCSVReader() throws IOException, LiquibaseException {
+        ResourceAccessor resourceAccessor = Scope.getCurrentScope().getResourceAccessor();
         if (resourceAccessor == null) {
             throw new UnexpectedLiquibaseException("No file resourceAccessor specified for " + getFile());
         }
-        InputStream stream = StreamUtil.openStream(file, isRelativeToChangelogFile(), getChangeSet(), resourceAccessor);
+        String relativeTo = getRelativeTo();
+        InputStream stream = resourceAccessor.openStream(relativeTo, file);
         if (stream == null) {
             return null;
         }
-        Reader streamReader;
-        if (getEncoding() == null) {
-            streamReader = new UtfBomAwareReader(stream);
-        } else {
-            streamReader = new UtfBomAwareReader(stream, getEncoding());
-        }
+        Reader streamReader = StreamUtil.readStreamWithReader(stream, getEncoding());
 
         char quotchar;
         if (StringUtil.trimToEmpty(this.quotchar).isEmpty()) {
@@ -724,6 +728,14 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
         }
 
         return new CSVReader(streamReader, separator.charAt(0), quotchar);
+    }
+
+    protected String getRelativeTo() {
+        String relativeTo = null;
+        if (ObjectUtil.defaultIfNull(isRelativeToChangelogFile(), false)) {
+            relativeTo = getChangeSet().getFilePath();
+        }
+        return relativeTo;
     }
 
     protected ExecutablePreparedStatementBase createPreparedStatement(
@@ -771,7 +783,7 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
     public CheckSum generateCheckSum() {
         InputStream stream = null;
         try {
-            stream = StreamUtil.openStream(file, isRelativeToChangelogFile(), getChangeSet(), getResourceAccessor());
+            stream = Scope.getCurrentScope().getResourceAccessor().openStream(getRelativeTo(), file);
             if (stream == null) {
                 throw new UnexpectedLiquibaseException(getFile() + " could not be found");
             }
@@ -802,6 +814,6 @@ public class LoadDataChange extends AbstractChange implements ChangeWithColumns<
 
     @SuppressWarnings("HardCodedStringLiteral")
     public enum LOAD_DATA_TYPE {
-        BOOLEAN, NUMERIC, DATE, STRING, COMPUTED, SEQUENCE, BLOB, CLOB, SKIP
+        BOOLEAN, NUMERIC, DATE, STRING, COMPUTED, SEQUENCE, BLOB, CLOB, SKIP,UUID
     }
 }
