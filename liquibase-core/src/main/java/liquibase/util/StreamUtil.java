@@ -1,11 +1,13 @@
 package liquibase.util;
 
 import liquibase.Scope;
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.changelog.ChangeSet;
+import liquibase.GlobalConfiguration;
+import liquibase.resource.ResourceAccessor;
 
 import java.io.*;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 
 /**
  * Utilities for working with streams.
@@ -13,7 +15,7 @@ import java.nio.charset.Charset;
 public class StreamUtil {
 
     public static String getLineSeparator() {
-        return LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputLineSeparator();
+        return GlobalConfiguration.OUTPUT_LINE_SEPARATOR.getCurrentValue();
     }
 
     public static void copy(InputStream inputStream, OutputStream outputStream) throws IOException {
@@ -81,4 +83,14 @@ public class StreamUtil {
         return new InputStreamReader(encodingAwareStream, ObjectUtil.defaultIfNull(encoding, Scope.getCurrentScope().getFileEncoding().toString()));
     }
 
+    /**
+     * @deprecated use {@link ResourceAccessor#openStream(String, String)}
+     */
+    public static InputStream openStream(String path, Boolean relativeToChangelogFile, ChangeSet changeSet, ResourceAccessor resourceAccessor) throws IOException {
+        String relativeTo = null;
+        if (relativeToChangelogFile != null && relativeToChangelogFile) {
+            relativeTo = changeSet.getChangeLog().getPhysicalFilePath();
+        }
+        return Scope.getCurrentScope().getResourceAccessor().openStream(relativeTo, path);
+    }
 }

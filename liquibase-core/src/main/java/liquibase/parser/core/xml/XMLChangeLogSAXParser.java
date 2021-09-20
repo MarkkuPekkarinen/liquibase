@@ -6,6 +6,7 @@ import liquibase.exception.ChangeLogParseException;
 import liquibase.parser.core.ParsedNode;
 import liquibase.resource.ResourceAccessor;
 import liquibase.util.BomAwareInputStream;
+import liquibase.util.FileUtil;
 import org.xml.sax.*;
 
 import javax.xml.parsers.SAXParser;
@@ -15,8 +16,10 @@ import java.io.InputStream;
 
 public class XMLChangeLogSAXParser extends AbstractChangeLogParser {
 
-    public static final String LIQUIBASE_SCHEMA_VERSION = "4.0";
+    public static final String LIQUIBASE_SCHEMA_VERSION = "4.1";
     private SAXParserFactory saxParserFactory;
+
+    private final LiquibaseEntityResolver resolver = new LiquibaseEntityResolver();
 
     public XMLChangeLogSAXParser() {
         saxParserFactory = SAXParserFactory.newInstance();
@@ -44,13 +47,11 @@ public class XMLChangeLogSAXParser extends AbstractChangeLogParser {
 
     @Override
     protected ParsedNode parseToNode(String physicalChangeLogLocation, ChangeLogParameters changeLogParameters, ResourceAccessor resourceAccessor) throws ChangeLogParseException {
-        try (
-                InputStream inputStream = resourceAccessor.openStream(null, physicalChangeLogLocation)) {
+        try (InputStream inputStream = resourceAccessor.openStream(null, physicalChangeLogLocation)) {
             SAXParser parser = saxParserFactory.newSAXParser();
             trySetSchemaLanguageProperty(parser);
 
             XMLReader xmlReader = parser.getXMLReader();
-            LiquibaseEntityResolver resolver = new LiquibaseEntityResolver();
             xmlReader.setEntityResolver(resolver);
             xmlReader.setErrorHandler(new ErrorHandler() {
                 @Override
@@ -79,7 +80,7 @@ public class XMLChangeLogSAXParser extends AbstractChangeLogParser {
                             physicalChangeLogLocation.replaceFirst("WEB-INF/classes/", ""),
                             changeLogParameters, resourceAccessor);
                 } else {
-                    throw new ChangeLogParseException(physicalChangeLogLocation + " not found");
+                    throw new ChangeLogParseException(FileUtil.getFileNotFoundMessage(physicalChangeLogLocation));
                 }
             }
 

@@ -36,6 +36,7 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
     private PreconditionContainer preconditionContainer = new PreconditionContainer();
     private String physicalFilePath;
     private String logicalFilePath;
+    private String changeLogId;
     private ObjectQuotingStrategy objectQuotingStrategy;
 
     private List<ChangeSet> changeSets = new ArrayList<>();
@@ -116,6 +117,14 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
         this.physicalFilePath = physicalFilePath;
     }
 
+    public String getChangeLogId() {
+        return changeLogId;
+    }
+
+    public void setChangeLogId(String changeLogId) {
+        this.changeLogId = changeLogId;
+    }
+
     public String getLogicalFilePath() {
         String returnPath = logicalFilePath;
         if (logicalFilePath == null) {
@@ -188,13 +197,14 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
         return getFilePath().compareTo(o.getFilePath());
     }
 
-
     public ChangeSet getChangeSet(String path, String author, String id) {
         for (ChangeSet changeSet : changeSets) {
-            if (normalizePath(changeSet.getFilePath()).equalsIgnoreCase(normalizePath(path))
-                    && changeSet.getAuthor().equalsIgnoreCase(author)
-                    && changeSet.getId().equalsIgnoreCase(id)
-                    && isDbmsMatch(changeSet.getDbmsSet())) {
+            final String normalizedPath = normalizePath(changeSet.getFilePath());
+            if (normalizedPath != null &&
+                normalizedPath.equalsIgnoreCase(normalizePath(path)) &&
+                changeSet.getAuthor().equalsIgnoreCase(author) &&
+                changeSet.getId().equalsIgnoreCase(id) &&
+                isDbmsMatch(changeSet.getDbmsSet())) {
                 return changeSet;
             }
         }
@@ -291,11 +301,16 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
     }
 
     public ChangeSet getChangeSet(RanChangeSet ranChangeSet) {
-        return getChangeSet(ranChangeSet.getChangeLog(), ranChangeSet.getAuthor(), ranChangeSet.getId());
+        final ChangeSet changeSet = getChangeSet(ranChangeSet.getChangeLog(), ranChangeSet.getAuthor(), ranChangeSet.getId());
+        if (changeSet != null) {
+            changeSet.setStoredFilePath(ranChangeSet.getStoredChangeLog());
+        }
+        return changeSet;
     }
 
     public void load(ParsedNode parsedNode, ResourceAccessor resourceAccessor)
             throws ParsedNodeException, SetupException {
+        setChangeLogId(parsedNode.getChildValue(null, "changeLogId", String.class));
         setLogicalFilePath(parsedNode.getChildValue(null, "logicalFilePath", String.class));
         setContexts(new ContextExpression(parsedNode.getChildValue(null, "context", String.class)));
         String objectQuotingStrategy = parsedNode.getChildValue(null, "objectQuotingStrategy", String.class);
@@ -390,9 +405,6 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
 
                 ContextExpression includeContexts = new ContextExpression(node.getChildValue(null, "context", String.class));
                 LabelExpression labelExpression = new LabelExpression(node.getChildValue(null, "labels", String.class));
-                if (labelExpression == null) {
-                    labelExpression = new LabelExpression();
-                }
                 Boolean ignore = node.getChildValue(null, "ignore", Boolean.class);
                 if (ignore == null) {
                     ignore = false;
@@ -437,22 +449,23 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
                     } else {
                         // read properties from the file
                         Properties props = new Properties();
-                        InputStream propertiesStream = resourceAccessor.openStream(null, file);
-                        if (propertiesStream == null) {
-                            Scope.getCurrentScope().getLog(getClass()).info("Could not open properties file " + file);
-                        } else {
-                            props.load(propertiesStream);
+                        try (InputStream propertiesStream = resourceAccessor.openStream(null, file)) {
+                            if (propertiesStream != null) {
+                                props.load(propertiesStream);
 
-                            for (Map.Entry entry : props.entrySet()) {
-                                this.changeLogParameters.set(
-                                        entry.getKey().toString(),
-                                        entry.getValue().toString(),
-                                        context,
-                                        labels,
-                                        dbms,
-                                        global,
-                                        this
-                                );
+                                for (Map.Entry<Object, Object> entry : props.entrySet()) {
+                                    this.changeLogParameters.set(
+                                            entry.getKey().toString(),
+                                            entry.getValue().toString(),
+                                            context,
+                                            labels,
+                                            dbms,
+                                            global,
+                                            this
+                                    );
+                                }
+                            } else {
+                                Scope.getCurrentScope().getLog(getClass()).info("Could not open properties file " + file);
                             }
                         }
                     }
@@ -462,6 +475,14 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
 
                 break;
             }
+            default:
+                // we want to exclude child nodes that are not changesets or the other things
+                // and avoid failing when encountering "child" nodes of the databaseChangeLog which are just
+                // XML node attributes (like schemaLocation). If you don't understand, remove the if and run the tests
+                // and look at the error output or review the "node" object here with a debugger.
+                if (node.getChildren() != null && !node.getChildren().isEmpty()) {
+                    throw new ParsedNodeException("Unexpected node found under databaseChangeLog: " + nodeName);
+                }
         }
     }
 
@@ -492,7 +513,7 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
             }
             pathName = pathName.replace('\\', '/');
 
-            if (!(pathName.endsWith("/"))) {
+            if (StringUtil.isNotEmpty(pathName) && !(pathName.endsWith("/"))) {
                 pathName = pathName + '/';
             }
             LOG.fine("includeAll for " + pathName);
@@ -630,9 +651,11 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
             return null;
         }
         return filePath.replaceFirst("^classpath:", "")
-                        .replaceAll("\\\\", "/")
-                        .replaceAll("//+", "/")
-                        .replaceFirst("^/", "");
+                .replaceAll("\\\\", "/")
+                .replaceAll("//+", "/")
+                .replaceFirst("^[a-zA-Z]:", "")
+                .replaceFirst("^/", "")
+                ;
 
     }
 

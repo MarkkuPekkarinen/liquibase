@@ -4,14 +4,18 @@ package org.liquibase.maven.plugins;
 
 import liquibase.Liquibase;
 import liquibase.Scope;
+import liquibase.configuration.core.DeprecatedConfigurationValueProvider;
 import liquibase.database.Database;
 import liquibase.exception.LiquibaseException;
+import liquibase.hub.HubConfiguration;
 import liquibase.resource.ClassLoaderResourceAccessor;
 import liquibase.resource.CompositeResourceAccessor;
 import liquibase.resource.FileSystemResourceAccessor;
 import liquibase.resource.ResourceAccessor;
+import liquibase.util.StringUtil;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugin.MojoFailureException;
+import org.liquibase.maven.property.PropertyElement;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -30,6 +34,7 @@ public abstract class AbstractLiquibaseChangeLogMojo extends AbstractLiquibaseMo
      *
    * @parameter property="liquibase.changeLogDirectory"
      */
+    @PropertyElement
     protected String changeLogDirectory;
 
     /**
@@ -37,6 +42,7 @@ public abstract class AbstractLiquibaseChangeLogMojo extends AbstractLiquibaseMo
      *
      * @parameter property="liquibase.changeLogFile"
      */
+    @PropertyElement
     protected String changeLogFile;
 
 
@@ -47,6 +53,7 @@ public abstract class AbstractLiquibaseChangeLogMojo extends AbstractLiquibaseMo
      *
      * @parameter property="liquibase.contexts" default-value=""
      */
+    @PropertyElement
     protected String contexts;
 
     /**
@@ -56,7 +63,37 @@ public abstract class AbstractLiquibaseChangeLogMojo extends AbstractLiquibaseMo
      *
      * @parameter property="liquibase.labels" default-value=""
      */
+    @PropertyElement
     protected String labels;
+
+    /**
+     *
+     * Specifies the <i>Liquibase Hub API key</i> for Liquibase to use.
+     *
+     * @parameter property="liquibase.hub.apiKey"
+     *
+     */
+    @PropertyElement(key = "liquibase.hub.apiKey")
+    protected String hubApiKey;
+
+    /**
+     *
+     * Specifies the <i>Liquibase Hub URL</i> for Liquibase to use.
+     *
+     * @parameter property="liquibase.hub.url"
+     *
+     */
+    @PropertyElement(key = "liquibase.hub.url")
+    protected String hubUrl;
+
+    /**
+     * Specifies the <i>Liquibase Hub URL</i> for Liquibase to use.
+     *
+     * @parameter property="liquibase.hub.mode"
+     *
+     */
+    @PropertyElement(key = "liquibase.hub.mode")
+    protected String hubMode;
 
     @Override
     protected void checkRequiredParametersAreSpecified() throws MojoFailureException {
@@ -76,6 +113,18 @@ public abstract class AbstractLiquibaseChangeLogMojo extends AbstractLiquibaseMo
      */
     @Override
     protected void performLiquibaseTask(Liquibase liquibase) throws LiquibaseException {
+        //
+        // Store the Hub API key and URL for later use
+        //
+        if (StringUtil.isNotEmpty(hubApiKey)) {
+            DeprecatedConfigurationValueProvider.setData(HubConfiguration.LIQUIBASE_HUB_API_KEY, hubApiKey);
+        }
+        if (StringUtil.isNotEmpty(hubUrl)) {
+            DeprecatedConfigurationValueProvider.setData(HubConfiguration.LIQUIBASE_HUB_URL.getKey(), hubUrl);
+        }
+        if (StringUtil.isNotEmpty(hubMode)) {
+            DeprecatedConfigurationValueProvider.setData(HubConfiguration.LIQUIBASE_HUB_MODE.getKey(), hubMode);
+        }
     }
 
     @Override

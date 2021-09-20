@@ -4,8 +4,7 @@ import liquibase.Scope;
 import liquibase.change.core.LoadDataChange;
 import java.util.Locale;
 
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.GlobalConfiguration;
 import liquibase.database.Database;
 import liquibase.database.core.*;
 import liquibase.datatype.DataTypeInfo;
@@ -20,7 +19,7 @@ import liquibase.util.grammar.ParseException;
  * year, month, day, hour, minute and second parts. Optionally, fractional seconds and time zone information can be
  * specified as well.
  */
-@DataTypeInfo(name = "timestamp", aliases = {"java.sql.Types.TIMESTAMP", "java.sql.Timestamp", "timestamptz"}, minParameters = 0, maxParameters = 1, priority = LiquibaseDataType.PRIORITY_DEFAULT)
+@DataTypeInfo(name = "timestamp", aliases = {"java.sql.Types.TIMESTAMP", "java.sql.Types.TIMESTAMP_WITH_TIMEZONE", "java.sql.Timestamp", "timestamptz"}, minParameters = 0, maxParameters = 1, priority = LiquibaseDataType.PRIORITY_DEFAULT)
 public class TimestampType extends DateTimeType {
 
     /**
@@ -67,9 +66,7 @@ public class TimestampType extends DateTimeType {
             return super.toDatabaseDataType(database);
         }
         if (database instanceof MSSQLDatabase) {
-            if (!LiquibaseConfiguration.getInstance()
-                    .getProperty(GlobalConfiguration.class, GlobalConfiguration.CONVERT_DATA_TYPES)
-                    .getValue(Boolean.class)
+            if (!GlobalConfiguration.CONVERT_DATA_TYPES.getCurrentValue()
                     && originalDefinition.toLowerCase(Locale.US).startsWith("timestamp")) {
                 return new DatabaseDataType(database.escapeDataTypeName("timestamp"));
             }
@@ -118,6 +115,21 @@ public class TimestampType extends DateTimeType {
             type = new DatabaseDataType("TIMESTAMP");
         }
 
+        if (originalDefinition.startsWith("java.sql.Types.TIMESTAMP_WITH_TIMEZONE")
+            && (database instanceof PostgresDatabase
+            || database instanceof OracleDatabase
+            || database instanceof H2Database
+            || database instanceof HsqlDatabase)) {
+
+            if (database instanceof PostgresDatabase || database instanceof H2Database) {
+                type.addAdditionalInformation("WITH TIME ZONE");
+            } else {
+                type.addAdditionalInformation("WITH TIMEZONE");
+            }
+
+            return type;
+        }
+
         if (getAdditionalInformation() != null
                 && (database instanceof PostgresDatabase
                 || database instanceof OracleDatabase)
@@ -127,7 +139,7 @@ public class TimestampType extends DateTimeType {
 
             if (additionalInformation != null) {
                 String additionInformation = additionalInformation.toUpperCase(Locale.US);
-                if ((database instanceof PostgresDatabase) && additionInformation.toUpperCase(Locale.US).contains("TIMEZONE")) {
+                if ((database instanceof PostgresDatabase || database instanceof H2Database) && additionInformation.toUpperCase(Locale.US).contains("TIMEZONE")) {
                     additionalInformation = additionInformation.toUpperCase(Locale.US).replace("TIMEZONE", "TIME ZONE");
                 }
                 // CORE-3229 Oracle 11g doesn't support WITHOUT clause in TIMESTAMP data type

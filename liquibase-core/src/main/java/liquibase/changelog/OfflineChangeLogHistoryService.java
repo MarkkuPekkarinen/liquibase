@@ -2,10 +2,10 @@ package liquibase.changelog;
 
 import liquibase.ContextExpression;
 import liquibase.Labels;
+import liquibase.Scope;
 import liquibase.change.CheckSum;
 import liquibase.changelog.ChangeSet.ExecType;
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.GlobalConfiguration;
 import liquibase.database.Database;
 import liquibase.database.OfflineConnection;
 import liquibase.exception.DatabaseException;
@@ -17,7 +17,6 @@ import liquibase.statement.core.CreateDatabaseChangeLogTableStatement;
 import liquibase.statement.core.MarkChangeSetRanStatement;
 import liquibase.statement.core.RemoveChangeSetRanStatusStatement;
 import liquibase.statement.core.UpdateChangeSetChecksumStatement;
-import liquibase.structure.core.Column;
 import liquibase.util.ISODateFormat;
 import liquibase.util.LiquibaseUtil;
 import liquibase.util.csv.CSVReader;
@@ -25,11 +24,11 @@ import liquibase.util.csv.CSVWriter;
 
 import java.io.*;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
 
 @LiquibaseService(skip = true)
+@SuppressWarnings("java:S899")
 public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryService {
 
     private final File changeLogFile;
@@ -107,7 +106,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
                 writeHeader(changeLogFile);
 
                 if (isExecuteDdlAgainstDatabase()) {
-                    ExecutorService.getInstance().getExecutor(getDatabase()).execute(new CreateDatabaseChangeLogTableStatement());
+                    Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", getDatabase()).execute(new CreateDatabaseChangeLogTableStatement());
                 }
 
 
@@ -121,7 +120,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
     protected void writeHeader(File file) throws IOException {
         try (FileOutputStream outputStream = new FileOutputStream(file);
              Writer writer = new OutputStreamWriter(outputStream,
-                     LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding())
+                     GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue())
         ) {
             CSVWriter csvWriter = new CSVWriter(writer);
             String[] columns = new String[Columns.values().length];
@@ -136,7 +135,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
     @Override
     protected void replaceChecksum(final ChangeSet changeSet) throws DatabaseException {
         if (isExecuteDmlAgainstDatabase()) {
-            ExecutorService.getInstance().getExecutor(getDatabase()).execute(new UpdateChangeSetChecksumStatement(changeSet));
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", getDatabase()).execute(new UpdateChangeSetChecksumStatement(changeSet));
         }
         replaceChangeSet(changeSet, new ReplaceChangeSetLogic() {
             @Override
@@ -150,7 +149,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
     @Override
     public List<RanChangeSet> getRanChangeSets() throws DatabaseException {
         try (
-                    Reader reader = new InputStreamReader(new FileInputStream(this.changeLogFile), LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
+                Reader reader = new InputStreamReader(new FileInputStream(this.changeLogFile), GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
         )
         {
             CSVReader csvReader = new CSVReader(reader);
@@ -206,10 +205,10 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
         File newFile = new File(oldFile.getParentFile(), oldFile.getName()+".new");
 
         try (
-            Reader reader = new InputStreamReader(new FileInputStream(oldFile), LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
-            Writer writer = new OutputStreamWriter(new FileOutputStream(newFile), LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
-            CSVReader csvReader = new CSVReader(reader);
-            CSVWriter csvWriter = new CSVWriter(writer);
+                Reader reader = new InputStreamReader(new FileInputStream(oldFile), GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
+                Writer writer = new OutputStreamWriter(new FileOutputStream(newFile), GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
+                CSVReader csvReader = new CSVReader(reader);
+                CSVWriter csvWriter = new CSVWriter(writer);
         )
         {
             String[] line;
@@ -234,10 +233,10 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
         File newFile = new File(oldFile.getParentFile(), oldFile.getName()+".new");
 
         try (
-            Reader reader = new InputStreamReader(new FileInputStream(oldFile), LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
-            Writer writer = new OutputStreamWriter(new FileOutputStream(newFile), LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
-            CSVReader csvReader = new CSVReader(reader);
-            CSVWriter csvWriter = new CSVWriter(writer);
+                Reader reader = new InputStreamReader(new FileInputStream(oldFile), GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
+                Writer writer = new OutputStreamWriter(new FileOutputStream(newFile), GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
+                CSVReader csvReader = new CSVReader(reader);
+                CSVWriter csvWriter = new CSVWriter(writer);
         )
         {
             String[] line;
@@ -276,7 +275,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
     @Override
     public void setExecType(final ChangeSet changeSet, final ChangeSet.ExecType execType) throws DatabaseException {
         if (isExecuteDmlAgainstDatabase()) {
-            ExecutorService.getInstance().getExecutor(getDatabase()).execute(new MarkChangeSetRanStatement(changeSet, execType));
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", getDatabase()).execute(new MarkChangeSetRanStatement(changeSet, execType));
             getDatabase().commit();
         }
 
@@ -300,7 +299,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
     @Override
     public void removeFromHistory(ChangeSet changeSet) throws DatabaseException {
         if (isExecuteDmlAgainstDatabase()) {
-            ExecutorService.getInstance().getExecutor(getDatabase()).execute(new RemoveChangeSetRanStatusStatement(changeSet));
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", getDatabase()).execute(new RemoveChangeSetRanStatusStatement(changeSet));
             getDatabase().commit();
         }
 
@@ -318,7 +317,7 @@ public class OfflineChangeLogHistoryService extends AbstractChangeLogHistoryServ
             lastChangeSetSequenceValue = 0;
 
             try (
-                Reader reader = new InputStreamReader(new FileInputStream(this.changeLogFile), LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
+                    Reader reader = new InputStreamReader(new FileInputStream(this.changeLogFile), GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
             )
             {
                 

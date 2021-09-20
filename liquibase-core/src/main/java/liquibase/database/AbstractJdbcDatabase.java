@@ -9,9 +9,9 @@ import liquibase.changelog.ChangeSet;
 import liquibase.changelog.DatabaseChangeLog;
 import liquibase.changelog.RanChangeSet;
 import liquibase.changelog.StandardChangeLogHistoryService;
-import liquibase.configuration.ConfigurationProperty;
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.GlobalConfiguration;
+import liquibase.configuration.ConfigurationDefinition;
+import liquibase.configuration.ConfiguredValue;
 import liquibase.database.core.OracleDatabase;
 import liquibase.database.core.PostgresDatabase;
 import liquibase.database.core.SQLiteDatabase;
@@ -323,6 +323,7 @@ public abstract class AbstractJdbcDatabase implements Database {
 
         if ((defaultSchemaName == null) && (connection != null)) {
             defaultSchemaName = getConnectionSchemaName();
+            Scope.getCurrentScope().getLog(getClass()).info("Set default schema name to " + defaultSchemaName);
         }
 
         return defaultSchemaName;
@@ -354,10 +355,13 @@ public abstract class AbstractJdbcDatabase implements Database {
         if (connection instanceof OfflineConnection) {
             return ((OfflineConnection) connection).getSchema();
         }
+        if (!(connection instanceof JdbcConnection)) {
+            return defaultSchemaName;
+        }
 
         try {
             SqlStatement currentSchemaStatement = getConnectionSchemaNameCallStatement();
-            return ExecutorService.getInstance().getExecutor(this).
+            return Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this).
                     queryForObject(currentSchemaStatement, String.class);
         } catch (Exception e) {
             Scope.getCurrentScope().getLog(getClass()).info("Error getting default schema", e);
@@ -620,7 +624,7 @@ public abstract class AbstractJdbcDatabase implements Database {
             return databaseChangeLogTableName;
         }
 
-        return LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getDatabaseChangeLogTableName();
+        return GlobalConfiguration.DATABASECHANGELOG_TABLE_NAME.getCurrentValue();
     }
 
     @Override
@@ -634,7 +638,7 @@ public abstract class AbstractJdbcDatabase implements Database {
             return databaseChangeLogLockTableName;
         }
 
-        return LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getDatabaseChangeLogLockTableName();
+        return GlobalConfiguration.DATABASECHANGELOGLOCK_TABLE_NAME.getCurrentValue();
     }
 
     @Override
@@ -648,7 +652,7 @@ public abstract class AbstractJdbcDatabase implements Database {
             return liquibaseTablespaceName;
         }
 
-        return LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getLiquibaseTablespaceName();
+        return GlobalConfiguration.LIQUIBASE_TABLESPACE_NAME.getCurrentValue();
     }
 
     @Override
@@ -671,9 +675,9 @@ public abstract class AbstractJdbcDatabase implements Database {
             return liquibaseCatalogName;
         }
 
-        ConfigurationProperty configuration = LiquibaseConfiguration.getInstance().getProperty(GlobalConfiguration.class, GlobalConfiguration.LIQUIBASE_CATALOG_NAME);
-        if (configuration.getWasOverridden()) {
-            return configuration.getValue(String.class);
+        final String configuredCatalogName = GlobalConfiguration.LIQUIBASE_CATALOG_NAME.getCurrentValue();
+        if (configuredCatalogName != null) {
+            return configuredCatalogName;
         }
 
         return getDefaultCatalogName();
@@ -690,9 +694,9 @@ public abstract class AbstractJdbcDatabase implements Database {
             return liquibaseSchemaName;
         }
 
-        ConfigurationProperty configuration = LiquibaseConfiguration.getInstance().getProperty(GlobalConfiguration.class, GlobalConfiguration.LIQUIBASE_SCHEMA_NAME);
-        if (configuration.getWasOverridden()) {
-            return configuration.getValue(String.class);
+        final ConfiguredValue<String> configuredValue = GlobalConfiguration.LIQUIBASE_SCHEMA_NAME.getCurrentConfiguredValue();
+        if (!configuredValue.wasDefaultValueUsed()) {
+            return configuredValue.getValue();
         }
 
         return getDefaultSchemaName();
@@ -754,8 +758,11 @@ public abstract class AbstractJdbcDatabase implements Database {
                 typesToInclude.remove(PrimaryKey.class);
                 typesToInclude.remove(UniqueConstraint.class);
 
-                if (supportsForeignKeyDisable()) {
+                if (supportsForeignKeyDisable() || getShortName().equals("postgresql")) {
                     //We do not remove ForeignKey because they will be disabled and removed as parts of tables.
+                    // Postgress is treated as if we can disable foreign keys because we can't drop
+                    // the foreign keys of a partitioned table, as discovered in
+                    // https://github.com/liquibase/liquibase/issues/1212
                     typesToInclude.remove(ForeignKey.class);
                 }
 
@@ -794,7 +801,7 @@ public abstract class AbstractJdbcDatabase implements Database {
                         }
                         SqlStatement[] sqlStatements = change.generateStatements(this);
                         for (SqlStatement statement : sqlStatements) {
-                            ExecutorService.getInstance().getExecutor(this).execute(statement);
+                            Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this).execute(statement);
                         }
 
                     }
@@ -887,7 +894,7 @@ public abstract class AbstractJdbcDatabase implements Database {
     @Override
     public String getViewDefinition(CatalogAndSchema schema, final String viewName) throws DatabaseException {
         schema = schema.customize(this);
-        String definition = ExecutorService.getInstance().getExecutor(this).queryForObject(new GetViewDefinitionStatement(schema.getCatalogName(), schema.getSchemaName(), viewName), String.class);
+        String definition = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this).queryForObject(new GetViewDefinitionStatement(schema.getCatalogName(), schema.getSchemaName(), viewName), String.class);
         if (definition == null) {
             return null;
         }
@@ -1189,7 +1196,7 @@ public abstract class AbstractJdbcDatabase implements Database {
 
     @Override
     public void close() throws DatabaseException {
-        ExecutorService.getInstance().clearExecutor(this);
+        Scope.getCurrentScope().getSingleton(ExecutorService.class).clearExecutor("jdbc", this);
         DatabaseConnection connection = getConnection();
         if (connection != null) {
             if (previousAutoCommit != null) {
@@ -1269,7 +1276,7 @@ public abstract class AbstractJdbcDatabase implements Database {
             }
             Scope.getCurrentScope().getLog(getClass()).fine("Executing Statement: " + statement);
             try {
-                ExecutorService.getInstance().getExecutor(this).execute(statement, sqlVisitors);
+                Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this).execute(statement, sqlVisitors);
             } catch (DatabaseException e) {
                 if (statement.continueOnError()) {
                     Scope.getCurrentScope().getLog(getClass()).severe("Error executing statement '"+statement.toString()+"', but continuing", e);

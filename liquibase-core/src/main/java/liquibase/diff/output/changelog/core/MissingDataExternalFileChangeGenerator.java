@@ -3,8 +3,7 @@ package liquibase.diff.output.changelog.core;
 import liquibase.change.Change;
 import liquibase.change.core.LoadDataChange;
 import liquibase.change.core.LoadDataColumnConfig;
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.GlobalConfiguration;
 import liquibase.database.Database;
 import liquibase.database.jvm.JdbcConnection;
 import liquibase.diff.output.DiffOutputControl;
@@ -23,6 +22,7 @@ import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Date;
 import java.util.List;
 
@@ -88,10 +88,7 @@ public class MissingDataExternalFileChangeGenerator extends MissingDataChangeGen
                 try (
                         FileOutputStream fileOutputStream = new FileOutputStream(fileName);
                         OutputStreamWriter outputStreamWriter = new OutputStreamWriter(
-                                fileOutputStream,
-                                LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class)
-                                        .getOutputEncoding()
-                        );
+                                fileOutputStream, GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
                         CSVWriter outputFile = new CSVWriter(new BufferedWriter(outputStreamWriter));
                 ) {
 
@@ -115,6 +112,8 @@ public class MissingDataExternalFileChangeGenerator extends MissingDataChangeGen
                                     dataTypes[i] = "BOOLEAN";
                                 } else if (value instanceof Date) {
                                     dataTypes[i] = "DATE";
+                                } else if (value instanceof byte[]) {
+                                    dataTypes[i] = "BLOB";
                                 } else {
                                     dataTypes[i] = "STRING";
                                 }
@@ -124,6 +123,10 @@ public class MissingDataExternalFileChangeGenerator extends MissingDataChangeGen
                             } else {
                                 if (value instanceof Date) {
                                     line[i] = new ISODateFormat().format(((Date) value));
+                                } else if (value instanceof byte[]) {
+                                    // extract the value as a Base64 string, to safely store the
+                                    // binary data
+                                    line[i] = Base64.getEncoder().encodeToString((byte[])value);
                                 } else {
                                     line[i] = value.toString();
                                 }
@@ -139,7 +142,7 @@ public class MissingDataExternalFileChangeGenerator extends MissingDataChangeGen
 
                 LoadDataChange change = new LoadDataChange();
                 change.setFile(fileName);
-                change.setEncoding(LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding());
+                change.setEncoding(GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue());
                 if (outputControl.getIncludeCatalog()) {
                     change.setCatalogName(table.getSchema().getCatalogName());
                 }

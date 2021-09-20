@@ -1,7 +1,7 @@
 package liquibase.changelog
 
-import liquibase.ContextExpression;
-import liquibase.LabelExpression;
+import liquibase.ContextExpression
+import liquibase.LabelExpression
 import liquibase.change.core.CreateTableChange
 import liquibase.change.core.RawSQLChange
 import liquibase.exception.SetupException
@@ -176,7 +176,7 @@ create view sql_view as select * from sql_table;'''
         rootChangeLog.load(new ParsedNode(null, "databaseChangeLog")
                 .addChild(new ParsedNode(null, "preConditions").addChildren([runningAs: [username: "user1"]]))
                 .addChildren([changeSet: [id: "1", author: "nvoxland", createTable: [tableName: "test_table", schemaName: "test_schema"]]])
-                .addChildren([includeAll: [path: "com/example", resourceComparator : "liquibase.changelog.ReversedChangeLogNamesComparator"]])
+                .addChildren([includeAll: [path: "com/example", resourceComparator: "liquibase.changelog.ReversedChangeLogNamesComparator"]])
                 , resourceAccessor)
 
         then:
@@ -279,6 +279,29 @@ create view sql_view as select * from sql_table;'''
                                                              "com/example/children/file3.sql"]
     }
 
+    def "includeAll empty relative path"() {
+        when:
+        def resourceAccessor = new MockResourceAccessor([
+                "com/example/root/children/file2.sql": "file 2",
+                "com/example/root/children/file3.sql": "file 3",
+                "com/example/root/children/file1.sql": "file 1",
+                "com/example/not/fileX.sql"     : "file X",
+        ]) {
+            private callingPath;
+
+            @Override
+            SortedSet<String> list(String relativeTo, String path, boolean recursive, boolean includeFiles, boolean includeDirectories) throws IOException {
+                callingPath = path;
+                return super.list(relativeTo, path, recursive, includeFiles, includeDirectories)
+            }
+        }
+        def changeLogFile = new DatabaseChangeLog("com/example/children/root.xml")
+        changeLogFile.includeAll("", true, { r -> r != changeLogFile.physicalFilePath}, true, changeLogFile.getStandardChangeLogComparator(), resourceAccessor, new ContextExpression(), new LabelExpression(), false)
+
+        then:
+        resourceAccessor.callingPath == ""
+    }
+
     @Unroll("#featureName: #changeSets")
     def "addChangeSet works with first/last combinations"() {
         when:
@@ -315,7 +338,7 @@ create view sql_view as select * from sql_table;'''
                 "com/example/children/file2.sql": "file 2",
                 "com/example/children/file3.sql": "file 3",
                 "com/example/children/file1.sql": "file 1",
-                "com/example/not/fileX.sql": "file X",
+                "com/example/not/fileX.sql"     : "file X",
         ])
         def changeLogFile = new DatabaseChangeLog("com/example/root.xml")
         changeLogFile.includeAll("com/example/missing", false, null, true, changeLogFile.getStandardChangeLogComparator(), resourceAccessor, new ContextExpression(), new LabelExpression(), false)
@@ -332,13 +355,31 @@ create view sql_view as select * from sql_table;'''
                 "com/example/children/file2.sql": "file 2",
                 "com/example/children/file3.sql": "file 3",
                 "com/example/children/file1.sql": "file 1",
-                "com/example/not/fileX.sql": "file X",
+                "com/example/not/fileX.sql"     : "file X",
         ])
         def changeLogFile = new DatabaseChangeLog("com/example/root.xml")
         changeLogFile.includeAll("com/example/missing", false, null, false, changeLogFile.getStandardChangeLogComparator(), resourceAccessor, new ContextExpression(), new LabelExpression(), false)
         then:
-        changeLogFile.changeSets.collect {it.filePath } == []
+        changeLogFile.changeSets.collect { it.filePath } == []
 
+    }
+
+    @Unroll
+    def "normalizePath"() {
+        expect:
+        DatabaseChangeLog.normalizePath(path) == expected
+
+        where:
+        path                    | expected
+        "changelog.xml"         | "changelog.xml"
+        "path/to/changelog.xml" | "path/to/changelog.xml"
+        "/path/to/changelog.xml" | "path/to/changelog.xml"
+        "classpath:path/to/changelog.xml" | "path/to/changelog.xml"
+        "classpath:/path/to/changelog.xml" | "path/to/changelog.xml"
+        "\\path\\to\\changelog.xml" | "path/to/changelog.xml"
+        "path\\to\\changelog.xml" | "path/to/changelog.xml"
+        "c:\\path\\to\\changelog.xml" | "path/to/changelog.xml"
+        "c:/path/to/changelog.xml" | "path/to/changelog.xml"
     }
 
 }

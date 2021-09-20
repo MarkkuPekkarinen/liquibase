@@ -7,6 +7,7 @@ import liquibase.sqlgenerator.SqlGeneratorChain;
 import liquibase.statement.core.InsertOrUpdateStatement;
 
 import java.util.Date;
+import liquibase.util.StringUtil;
 
 /**
  * @author Andrew Muraco
@@ -55,21 +56,27 @@ public class InsertOrUpdateGeneratorHsql extends InsertOrUpdateGenerator {
 	protected String getUpdateStatement(InsertOrUpdateStatement insertOrUpdateStatement, Database database,
 			String whereClause, SqlGeneratorChain sqlGeneratorChain) {
 
-		StringBuilder sql = new StringBuilder("UPDATE SET ");
+		StringBuilder sql = new StringBuilder("UPDATE ")
+				.append(insertOrUpdateStatement.getTableName())
+				.append(" SET ");
 
 //		String[] pkFields = insertOrUpdateStatement.getPrimaryKey().split(",");
 //		HashSet<String> hashPkFields = new HashSet<String>(Arrays.asList(pkFields));
 		for (String columnKey : insertOrUpdateStatement.getColumnValues().keySet()) {
-//			if (!hashPkFields.contains(columnKey)) {
+			if (insertOrUpdateStatement.getAllowColumnUpdate(columnKey)) {
 				sql.append(columnKey).append(" = ");
 				sql.append(convertToString(insertOrUpdateStatement.getColumnValue(columnKey), database));
 				sql.append(",");
-//			}
+			}
 		}
         int lastComma = sql.lastIndexOf(",");
         if (lastComma > -1) {
             sql.deleteCharAt(lastComma);
         }
+		if (StringUtil.isNotEmpty(whereClause)) {
+			sql.append(" WHERE ").append(whereClause);
+		}
+
         return sql.toString();
 	}
 

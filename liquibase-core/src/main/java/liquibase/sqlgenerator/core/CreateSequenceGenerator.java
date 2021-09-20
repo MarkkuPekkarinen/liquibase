@@ -2,6 +2,7 @@ package liquibase.sqlgenerator.core;
 
 import liquibase.database.Database;
 import liquibase.database.core.*;
+import liquibase.exception.DatabaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.sql.Sql;
 import liquibase.sql.UnparsedSql;
@@ -37,8 +38,16 @@ public class CreateSequenceGenerator extends AbstractSqlGenerator<CreateSequence
             validationErrors.checkDisallowedField("maxValue", statement.getMaxValue(), database, FirebirdDatabase.class, H2Database.class, HsqlDatabase.class);
         }
 
+        if (isPostgreWithoutAsDatatypeSupport(database)) {
+            validationErrors.checkDisallowedField("AS", statement.getDataType(), database, PostgresDatabase.class);
+        }
+
         validationErrors.checkDisallowedField("ordered", statement.getOrdered(), database, HsqlDatabase.class, PostgresDatabase.class);
         validationErrors.checkDisallowedField("dataType", statement.getDataType(), database, DB2Database.class, HsqlDatabase.class, OracleDatabase.class, MySQLDatabase.class, MSSQLDatabase.class);
+
+        if (database instanceof H2Database && statement.getDataType() != null && !statement.getDataType().equalsIgnoreCase("bigint")) {
+            validationErrors.addWarning("H2 only crates BIGINT sequences. Ignoring requested type "+statement.getDataType());
+        }
 
         return validationErrors;
     }
@@ -48,13 +57,23 @@ public class CreateSequenceGenerator extends AbstractSqlGenerator<CreateSequence
         StringBuilder queryStringBuilder = new StringBuilder();
         queryStringBuilder.append("CREATE SEQUENCE ");
         if (database instanceof PostgresDatabase) {
-            queryStringBuilder.append(" IF NOT EXISTS ");
+            // supported only for version >= 9.5 https://www.postgresql.org/docs/9.5/sql-createsequence.html
+            try {
+                if (database.getDatabaseMajorVersion() > 9
+                        || (database.getDatabaseMajorVersion() == 9 && database.getDatabaseMinorVersion() >= 5)) {
+                    queryStringBuilder.append(" IF NOT EXISTS ");
+                }
+            } catch (DatabaseException e) {
+                // we can not determinate the PostgreSQL version so we do not add this statement
+            }
         }
         queryStringBuilder.append(database.escapeSequenceName(statement.getCatalogName(), statement.getSchemaName(), statement.getSequenceName()));
         if (database instanceof HsqlDatabase || database instanceof Db2zDatabase) {
             queryStringBuilder.append(" AS BIGINT ");
         } else if (statement.getDataType() != null) {
-            queryStringBuilder.append(" AS " + statement.getDataType());
+            if (!(database instanceof H2Database)) {
+                queryStringBuilder.append(" AS " + statement.getDataType());
+            }
         }
         if (!(database instanceof MariaDBDatabase) && statement.getStartValue() != null) {
             queryStringBuilder.append(" START WITH ").append(statement.getStartValue());
@@ -111,5 +130,14 @@ public class CreateSequenceGenerator extends AbstractSqlGenerator<CreateSequence
     private boolean isH2WithMinMaxSupport(Database database) {
         return H2Database.class.isAssignableFrom(database.getClass())
                 && ((H2Database) database).supportsMinMaxForSequences();
+    }
+
+    private boolean isPostgreWithoutAsDatatypeSupport(Database database) {
+        try {
+            return database instanceof PostgresDatabase && database.getDatabaseMajorVersion() < 10;
+        } catch (DatabaseException e) {
+            // we can't determinate the PostgreSQL version so we shouldn't throw validation error as it might work for this DB
+            return false;
+        }
     }
 }

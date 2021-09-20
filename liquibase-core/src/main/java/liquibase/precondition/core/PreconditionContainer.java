@@ -190,7 +190,7 @@ public class PreconditionContainer extends AndPrecondition implements ChangeLogC
             ranOn = String.valueOf(changeSet);
         }
 
-        Executor executor = ExecutorService.getInstance().getExecutor(database);
+        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database);
         try {
             // Three cases for preConditions onUpdateSQL:
             // 1. TEST: preConditions should be run, as in regular update mode
@@ -224,7 +224,9 @@ public class PreconditionContainer extends AndPrecondition implements ChangeLogC
                 message = new StringBuilder(getOnFailMessage());
             }
             if (this.getOnFail().equals(PreconditionContainer.FailOption.WARN)) {
-                Scope.getCurrentScope().getLog(getClass()).info("Executing: " + ranOn + " despite precondition failure due to onFail='WARN':\n " + message);
+                final String exceptionMessage = "Executing " + ranOn + " despite precondition failure due to onFail='WARN':\n " + message;
+                Scope.getCurrentScope().getUI().sendMessage("WARNING: " + exceptionMessage);
+                Scope.getCurrentScope().getLog(getClass()).warning(exceptionMessage);
                 if (changeExecListener != null) {
                     changeExecListener.preconditionFailed(e, FailOption.WARN);
                 }

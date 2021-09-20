@@ -13,6 +13,12 @@
     <artifactId>liquibase-integration-tests</artifactId>
 
     <dependencies>
+        <dependency>
+            <groupId>org.liquibase</groupId>
+            <artifactId>liquibase-extension-testing</artifactId>
+            <version>${liquibase.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

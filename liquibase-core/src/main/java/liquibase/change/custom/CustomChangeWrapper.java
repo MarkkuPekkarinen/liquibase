@@ -44,7 +44,7 @@ public class CustomChangeWrapper extends AbstractChange {
 
     private SortedSet<String> params = new TreeSet<>();
 
-    private Map<String, String> paramValues = new HashMap<>();
+    private Map<String, String> paramValues = new LinkedHashMap<>();
 
     private boolean configured;
 
@@ -254,7 +254,7 @@ public class CustomChangeWrapper extends AbstractChange {
             case "class":
                 return SerializationType.NAMED_FIELD;
             case "param":
-                return SerializationType.NESTED_OBJECT;
+                return SerializationType.NAMED_FIELD;
             default:
                 throw new UnexpectedLiquibaseException("Unexpected CustomChangeWrapper field " + field);
         }
@@ -307,7 +307,11 @@ public class CustomChangeWrapper extends AbstractChange {
             if (value != null) {
                 value = value.toString();
             }
-            this.setParam(child.getChildValue(null, "name", String.class), (String) value);
+            String paramName = child.getChildValue(null, "name", String.class);
+            if (paramName == null) {
+                throw new ParsedNodeException("Custom change param " + child + " does not have a 'name' attribute");
+            }
+            this.setParam(paramName, (String) value);
         }
 
         CustomChange customChange = null;

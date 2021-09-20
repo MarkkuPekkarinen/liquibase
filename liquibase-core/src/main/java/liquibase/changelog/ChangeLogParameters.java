@@ -8,7 +8,7 @@ import liquibase.configuration.LiquibaseConfiguration;
 import liquibase.database.Database;
 import liquibase.database.DatabaseList;
 import liquibase.exception.DatabaseException;
-import liquibase.parser.ChangeLogParserCofiguration;
+import liquibase.parser.ChangeLogParserConfiguration;
 import liquibase.util.StringUtil;
 
 import java.util.*;
@@ -97,15 +97,16 @@ public class ChangeLogParameters {
         return Collections.unmodifiableList(changeLogParameters);
     }
 
-    public void set(String paramter, Object value) {
+    public void set(String parameter, Object value) {
         /*
-         * TODO: this was a bug. Muliple created parameters have been created, but the corresponding method in
+         * TODO: this was a bug. Multiple created parameters have been created, but the corresponding method in
          * #findParameter() is only catching the first one. So here we should eliminate duplicate entries
          */
-        ChangeLogParameter param = findParameter(paramter, null);
-        if (param == null) {
-            // okay add it
-            changeLogParameters.add(new ChangeLogParameter(paramter, value));
+        ChangeLogParameter param = findParameter(parameter, null);
+        // okay add it
+        changeLogParameters.add(new ChangeLogParameter(parameter, value));
+        if (param != null && ! param.isGlobal()) {
+            changeLogParameters.remove(param);
         }
     }
 
@@ -117,21 +118,25 @@ public class ChangeLogParameters {
     public void set(String key, String value, ContextExpression contexts, Labels labels, String databases,
                     boolean globalParam, DatabaseChangeLog changeLog) {
         /**
-         * TODO: this was a bug. Muliple created parameters have been created, but the corresponding method in
+         * TODO: this was a bug. Multiple created parameters have been created, but the corresponding method in
          * #findParameter() is only catching the first one. So here we should eliminate duplicate entries
          **/
         if (globalParam) {
-            // if it is global param ignore additional adds
+            // if it is global param remove duplicate non-global parameters
             ChangeLogParameter param = findParameter(key, null);
-            if (param == null) {
-                // okay add it
-                changeLogParameters.add(new ChangeLogParameter(key, value, contexts, labels, databases, globalParam,
-                    changeLog));
+            if (param != null && ! param.isGlobal()) {
+                changeLogParameters.remove(param);
             }
-        } else {
-            //this is a non-global param, just add it
+            // okay add it
             changeLogParameters.add(new ChangeLogParameter(key, value, contexts, labels, databases, globalParam,
                 changeLog));
+        } else {
+           ChangeLogParameter param = findParameter(key, changeLog);
+           if (param != null && ! param.isGlobal() && param.getChangeLog() == changeLog) {
+               changeLogParameters.remove(param);
+           }
+           //this is a non-global param, just add it
+           changeLogParameters.add(new ChangeLogParameter(key, value, contexts, labels, databases, globalParam, changeLog));
         }
     }
 
@@ -156,20 +161,54 @@ public class ChangeLogParameters {
                 found.add(param);
             }
         }
-        
-        if (found.size() == 1) {
-            // this case is typically a global param, but could also be a unique non-global param in one specific
-            // changelog
-            result = found.get(0);
-        } else if (found.size() > 1) {
+
+        // if any parameters were found, determine which parameter value to use
+        // (even if only one was found, we can not assume it should be used)
+        if (found.size() > 0) {
+            // look for the first global parameter
             for (ChangeLogParameter changeLogParameter : found) {
-                if (changeLogParameter.getChangeLog().equals(changeLog)) {
+                if (changeLogParameter.isGlobal()) {
                     result = changeLogParameter;
+                    break;
                 }
             }
+
+            // if none of the found parameters are global (all of them are local) and
+            // the parameter is searched in the context of a changeSet (otherwise implicitly a global parameter is wanted)
+            if (result == null && changeLog != null) {
+                // look for the first parameter belonging to the current changeLog or the closest ancestor of the changeLog
+                DatabaseChangeLog changeLogOrParent = changeLog;
+                do {
+                    for (ChangeLogParameter changeLogParameter : found) {
+                        //
+                        // If we are iterating through multiple found parameters for the key
+                        // then we skip any with unexpanded parameter values.
+                        // If all of the found parameters have unexpanded values
+                        // then we will just return the first one in the current changelog or closest ancestor.
+                        //
+                        if (found.size() > 1 && isUnexpanded(changeLogParameter)) {
+                            continue;
+                        }
+                        if (changeLogParameter.getChangeLog().equals(changeLogOrParent)) {
+                            result = changeLogParameter;
+                            break;
+                        }
+                    }
+                } while (result == null && (changeLogOrParent = changeLogOrParent.getParentChangeLog()) != null);
+            }
         }
-        
+
         return result;
+    }
+
+    private boolean isUnexpanded(ChangeLogParameter changeLogParameter) {
+        Object value = changeLogParameter.getValue();
+        if (value instanceof String) {
+            String string = (String) value;
+            Matcher matcher = ExpressionExpander.EXPRESSION_PATTERN.matcher(string);
+            return matcher.find();
+        }
+        return false;
     }
 
     public boolean hasValue(String key, DatabaseChangeLog changeLog) {
@@ -195,8 +234,7 @@ public class ChangeLogParameters {
 
         public ExpressionExpander(ChangeLogParameters changeLogParameters) {
             this.changeLogParameters = changeLogParameters;
-            this.enableEscaping = LiquibaseConfiguration.getInstance()
-                .getConfiguration(ChangeLogParserCofiguration.class).getSupportPropertyEscaping();
+            this.enableEscaping = ChangeLogParserConfiguration.SUPPORT_PROPERTY_ESCAPING.getCurrentValue();
         }
 
         public String expandExpressions(String text, DatabaseChangeLog changeLog) {

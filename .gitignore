@@ -11,7 +11,8 @@ release.properties
 /.idea/workspace.xml
 /out
 /bin
-liquibase.integrationtest.local.properties
+**/liquibase.integrationtest.local.properties
+**/liquibase.test.local.properties
 derby.log
 .idea
 *.iml
@@ -28,3 +29,5 @@ _issues
 jacoco.exec
 **/original-pom.xml
 original-pom.xml
+**/logback-test.xml
+**/*.swp

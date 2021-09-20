@@ -1,7 +1,7 @@
 package liquibase.util;
 
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.Scope;
+import liquibase.GlobalConfiguration;
 
 import java.io.*;
 
@@ -64,7 +64,19 @@ public class FileUtil {
         try (
             FileOutputStream output = new FileOutputStream(file);
         ){
-            StreamUtil.copy(new ByteArrayInputStream(contents.getBytes(LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class).getOutputEncoding())), output);
+            StreamUtil.copy(new ByteArrayInputStream(contents.getBytes(GlobalConfiguration.OUTPUT_FILE_ENCODING.getCurrentValue())), output);
         }
     }
+
+    public static String getFileNotFoundMessage(String physicalChangeLogLocation) {
+        String message = "The file " + physicalChangeLogLocation + " was not found in" + System.lineSeparator();
+        for (String location : Scope.getCurrentScope().getResourceAccessor().describeLocations()) {
+            message += "    - " + location + System.lineSeparator();
+        }
+        message += "Specifying files by absolute path was removed in Liquibase 4.0. Please use a relative path or add '/' to the classpath parameter.";
+
+        return message;
+    }
+
+
 }

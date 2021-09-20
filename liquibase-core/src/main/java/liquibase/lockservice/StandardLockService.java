@@ -2,8 +2,7 @@ package liquibase.lockservice;
 
 import liquibase.Scope;
 import liquibase.change.Change;
-import liquibase.configuration.GlobalConfiguration;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.GlobalConfiguration;
 import liquibase.database.Database;
 import liquibase.database.ObjectQuotingStrategy;
 import liquibase.database.core.DB2Database;
@@ -27,6 +26,8 @@ import liquibase.structure.DatabaseObject;
 import liquibase.structure.core.Table;
 
 import java.text.DateFormat;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 
 import static java.util.ResourceBundle.getBundle;
@@ -68,8 +69,7 @@ public class StandardLockService implements LockService {
         if (changeLogLockPollRate != null) {
             return changeLogLockPollRate;
         }
-        return LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class)
-                .getDatabaseChangeLogLockWaitTime();
+        return GlobalConfiguration.CHANGELOGLOCK_WAIT_TIME.getCurrentValue();
     }
 
     @Override
@@ -81,8 +81,7 @@ public class StandardLockService implements LockService {
         if (changeLogLockRecheckTime != null) {
             return changeLogLockRecheckTime;
         }
-        return LiquibaseConfiguration.getInstance().getConfiguration(GlobalConfiguration.class)
-                .getDatabaseChangeLogLockPollRate();
+        return GlobalConfiguration.CHANGELOGLOCK_POLL_RATE.getCurrentValue();
     }
 
     @Override
@@ -93,7 +92,7 @@ public class StandardLockService implements LockService {
     @Override
     public void init() throws DatabaseException {
         boolean createdTable = false;
-        Executor executor = ExecutorService.getInstance().getExecutor(database);
+        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc",  database);
 
         if (!hasDatabaseChangeLogLockTable()) {
             try {
@@ -161,7 +160,7 @@ public class StandardLockService implements LockService {
 
     public boolean isDatabaseChangeLogLockTableInitialized(final boolean tableJustCreated) throws DatabaseException {
         if (!isDatabaseChangeLogLockTableInitialized) {
-            Executor executor = ExecutorService.getInstance().getExecutor(database);
+            Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database);
 
             try {
                 isDatabaseChangeLogLockTableInitialized = executor.queryForInt(
@@ -244,13 +243,13 @@ public class StandardLockService implements LockService {
 
         quotingStrategy = database.getObjectQuotingStrategy();
 
-        Executor executor = ExecutorService.getInstance().getExecutor(database);
+        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database);
 
         try {
             database.rollback();
             this.init();
 
-            Boolean locked = ExecutorService.getInstance().getExecutor(database).queryForObject(
+            Boolean locked = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database).queryForObject(
                     new SelectFromDatabaseChangeLogLockStatement("LOCKED"), Boolean.class
             );
 
@@ -310,7 +309,7 @@ public class StandardLockService implements LockService {
             database.setObjectQuotingStrategy(this.quotingStrategy);
         }
 
-        Executor executor = ExecutorService.getInstance().getExecutor(database);
+        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database);
         try {
             if (this.hasDatabaseChangeLogLockTable()) {
                 executor.comment("Release Database Lock");
@@ -380,7 +379,7 @@ public class StandardLockService implements LockService {
             SqlStatement sqlStatement = new SelectFromDatabaseChangeLogLockStatement(
                     "ID", "LOCKED", "LOCKGRANTED", "LOCKEDBY"
             );
-            List<Map<String, ?>> rows = ExecutorService.getInstance().getExecutor(database).queryForList(sqlStatement);
+            List<Map<String, ?>> rows = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database).queryForList(sqlStatement);
             for (Map columnMap : rows) {
                 Object lockedValue = columnMap.get("LOCKED");
                 Boolean locked;
@@ -390,10 +389,17 @@ public class StandardLockService implements LockService {
                     locked = (Boolean) lockedValue;
                 }
                 if ((locked != null) && locked) {
+                    Object lockGranted = columnMap.get("LOCKGRANTED");
+                    final Date castedLockGranted;
+                    if (lockGranted instanceof LocalDateTime) {
+                        castedLockGranted = Date.from(((LocalDateTime) lockGranted).atZone(ZoneId.systemDefault()).toInstant());
+                    } else {
+                        castedLockGranted = (Date)lockGranted;
+                    }
                     allLocks.add(
                             new DatabaseChangeLogLock(
                                     ((Number) columnMap.get("ID")).intValue(),
-                                    (Date) columnMap.get("LOCKGRANTED"),
+                                    castedLockGranted,
                                     (String) columnMap.get("LOCKEDBY")
                             )
                     );
@@ -446,7 +452,7 @@ public class StandardLockService implements LockService {
                 DiffOutputControl diffOutputControl = new DiffOutputControl(true, true, false, null);
                 Change[] change = ChangeGeneratorFactory.getInstance().fixUnexpected(table, diffOutputControl, database, database);
                 SqlStatement[] sqlStatement = change[0].generateStatements(database);
-                ExecutorService.getInstance().getExecutor(database).execute(sqlStatement[0]);
+                Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database).execute(sqlStatement[0]);
             }
             reset();
         } catch (InvalidExampleException e) {

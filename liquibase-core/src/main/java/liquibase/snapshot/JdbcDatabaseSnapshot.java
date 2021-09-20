@@ -204,7 +204,8 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                                 "i.CREATOR AS INDEX_QUALIFIER " +
                                 "FROM SYSIBM.SYSKEYS k " +
                                 "JOIN SYSIBM.SYSINDEXES i ON k.IXNAME = i.NAME " +
-                                "WHERE  i.CREATOR = '" + database.correctObjectName(catalogAndSchema.getSchemaName(), Schema.class) + "'";
+                                "WHERE  i.CREATOR = '" + database.correctObjectName(catalogAndSchema.getSchemaName(), Schema.class) + "'" +
+                                "AND  k.IXCREATOR = '" + database.correctObjectName(catalogAndSchema.getSchemaName(), Schema.class) + "'";
                         if (!isBulkFetchMode && tableName != null) {
                             sql += " AND i.TBNAME='" + database.escapeStringForDatabase(tableName) + "'";
                         }
@@ -411,14 +412,13 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
           protected List<CachedRow> oracleQuery(boolean bulk) throws DatabaseException, SQLException {
             CatalogAndSchema catalogAndSchema = new CatalogAndSchema(catalogName, schemaName).customize(database);
 
-            boolean getMapDateToTimestamp = true;
             String jdbcSchemaName = ((AbstractJdbcDatabase) database).getJdbcSchemaName(catalogAndSchema);
             boolean collectIdentityData = database.getDatabaseMajorVersion() >= OracleDatabase.ORACLE_12C_MAJOR_VERSION;
 
             String sql = "select NULL AS TABLE_CAT, OWNER AS TABLE_SCHEM, 'NO' as IS_AUTOINCREMENT, cc.COMMENTS AS REMARKS," +
                 "OWNER, TABLE_NAME, COLUMN_NAME, DATA_TYPE AS DATA_TYPE_NAME, DATA_TYPE_MOD, DATA_TYPE_OWNER, " +
                 // note: oracle reports DATA_LENGTH=4*CHAR_LENGTH when using VARCHAR( <N> CHAR ), thus BYTEs
-                "DECODE (c.data_type, 'CHAR', 1, 'VARCHAR2', 12, 'NUMBER', 3, 'LONG', -1, 'DATE', " + (getMapDateToTimestamp ? "93" : "91") + ", 'RAW', -3, 'LONG RAW', -4, 'BLOB', 2004, 'CLOB', 2005, 'BFILE', -13, 'FLOAT', 6, 'TIMESTAMP(6)', 93, 'TIMESTAMP(6) WITH TIME ZONE', -101, 'TIMESTAMP(6) WITH LOCAL TIME ZONE', -102, 'INTERVAL YEAR(2) TO MONTH', -103, 'INTERVAL DAY(2) TO SECOND(6)', -104, 'BINARY_FLOAT', 100, 'BINARY_DOUBLE', 101, 'XMLTYPE', 2009, 1111) AS data_type, " +
+                "DECODE (c.data_type, 'CHAR', 1, 'VARCHAR2', 12, 'NUMBER', 3, 'LONG', -1, 'DATE', " + "93" + ", 'RAW', -3, 'LONG RAW', -4, 'BLOB', 2004, 'CLOB', 2005, 'BFILE', -13, 'FLOAT', 6, 'TIMESTAMP(6)', 93, 'TIMESTAMP(6) WITH TIME ZONE', -101, 'TIMESTAMP(6) WITH LOCAL TIME ZONE', -102, 'INTERVAL YEAR(2) TO MONTH', -103, 'INTERVAL DAY(2) TO SECOND(6)', -104, 'BINARY_FLOAT', 100, 'BINARY_DOUBLE', 101, 'XMLTYPE', 2009, 1111) AS data_type, " +
                 "DECODE( CHAR_USED, 'C',CHAR_LENGTH, DATA_LENGTH ) as DATA_LENGTH, " +
                 "DATA_PRECISION, DATA_SCALE, NULLABLE, COLUMN_ID as ORDINAL_POSITION, DEFAULT_LENGTH, " +
                 "DATA_DEFAULT, " +
@@ -521,7 +521,8 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                 "c.column_id as ORDINAL_POSITION, " +
                 "c.scale as DECIMAL_DIGITS, " +
                 "c.max_length as COLUMN_SIZE, " +
-                "c.precision as DATA_PRECISION " +
+                "c.precision as DATA_PRECISION, " +
+                "c.is_computed as IS_COMPUTED " +
                 "FROM "+databasePrefix+"sys.columns c " +
                 "inner join "+databasePrefix+"sys.types t on c.user_type_id=t.user_type_id " +
                 "{REMARKS_JOIN_PLACEHOLDER}" +
@@ -763,30 +764,60 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
             }
 
             protected String getDB2Sql(String jdbcSchemaName, String tableName) {
-                return "SELECT  " +
-                        "  pk_col.tabschema AS pktable_cat,  " +
-                        "  pk_col.tabname as pktable_name,  " +
-                        "  pk_col.colname as pkcolumn_name, " +
-                        "  fk_col.tabschema as fktable_cat,  " +
-                        "  fk_col.tabname as fktable_name,  " +
-                        "  fk_col.colname as fkcolumn_name, " +
-                        "  fk_col.colseq as key_seq,  " +
-                        "  decode (ref.updaterule, 'A', 3, 'R', 1, 1) as update_rule,  " +
-                        "  decode (ref.deleterule, 'A', 3, 'C', 0, 'N', 2, 'R', 1, 1) as delete_rule,  " +
-                        "  ref.constname as fk_name,  " +
-                        "  ref.refkeyname as pk_name,  " +
-                        "  7 as deferrability  " +
-                        "FROM " +
-                        "syscat.references ref " +
-                        "join syscat.keycoluse fk_col on ref.constname=fk_col.constname and ref.tabschema=fk_col.tabschema and ref.tabname=fk_col.tabname " +
-                        "join syscat.keycoluse pk_col on ref.refkeyname=pk_col.constname and ref.reftabschema=pk_col.tabschema and ref.reftabname=pk_col.tabname " +
-                        "WHERE ref.tabschema = '" + jdbcSchemaName + "' " +
-                        "and pk_col.colseq=fk_col.colseq " +
-                        (tableName != null ? " AND fk_col.tabname='" + tableName + "' " : "") +
-                        "ORDER BY fk_col.colseq";
+                if (database.getDatabaseProductName().startsWith("DB2 UDB for AS/400")) {
+                    return getDB2ForAs400Sql(jdbcSchemaName, tableName);
+                }
+                else {
+                    return getDefaultDB2Sql(jdbcSchemaName, tableName);
+                }
             }
 
-            protected String getDB2ZOSSql(String jdbcSchemaName, String tableName) {
+          private String getDefaultDB2Sql(String jdbcSchemaName, String tableName) {
+              return "SELECT  " +
+                      "  pk_col.tabschema AS pktable_cat,  " +
+                      "  pk_col.tabname as pktable_name,  " +
+                      "  pk_col.colname as pkcolumn_name, " +
+                      "  fk_col.tabschema as fktable_cat,  " +
+                      "  fk_col.tabname as fktable_name,  " +
+                      "  fk_col.colname as fkcolumn_name, " +
+                      "  fk_col.colseq as key_seq,  " +
+                      "  decode (ref.updaterule, 'A', 3, 'R', 1, 1) as update_rule,  " +
+                      "  decode (ref.deleterule, 'A', 3, 'C', 0, 'N', 2, 'R', 1, 1) as delete_rule,  " +
+                      "  ref.constname as fk_name,  " +
+                      "  ref.refkeyname as pk_name,  " +
+                      "  7 as deferrability  " +
+                      "FROM " +
+                      "syscat.references ref " +
+                      "join syscat.keycoluse fk_col on ref.constname=fk_col.constname and ref.tabschema=fk_col.tabschema and ref.tabname=fk_col.tabname " +
+                      "join syscat.keycoluse pk_col on ref.refkeyname=pk_col.constname and ref.reftabschema=pk_col.tabschema and ref.reftabname=pk_col.tabname " +
+                      "WHERE ref.tabschema = '" + jdbcSchemaName + "' " +
+                      "and pk_col.colseq=fk_col.colseq " +
+                      (tableName != null ? " AND fk_col.tabname='" + tableName + "' " : "") +
+                      "ORDER BY fk_col.colseq";
+          }
+
+          private String getDB2ForAs400Sql(String jdbcSchemaName, String tableName) {
+              return "SELECT " +
+                          "pktable_cat, " +
+                          "pktable_name, " +
+                          "pkcolumn_name, " +
+                          "fktable_cat, " +
+                          "fktable_name, " +
+                          "fkcolumn_name, " +
+                          "key_seq, " +
+                          "update_rule, " +
+                          "delete_rule, " +
+                          "fk_name, " +
+                          "pk_name, " +
+                          "deferrability " +
+                      "FROM " +
+                          "sysibm.SQLFORKEYS " +
+                      "WHERE " +
+                          "FKTABLE_SCHEM = '" + jdbcSchemaName + "' " +
+                          "AND FKTABLE_NAME = '" + tableName + "'";
+          }
+
+          protected String getDB2ZOSSql(String jdbcSchemaName, String tableName) {
                 return "SELECT  " +
                         "  ref.REFTBCREATOR AS pktable_cat,  " +
                         "  ref.REFTBNAME as pktable_name,  " +
@@ -971,6 +1002,8 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                         return queryMssql(catalogAndSchema, table);
                     } else if (database instanceof Db2zDatabase) {
                         return queryDb2Zos(catalogAndSchema, table);
+                    } else if ( database instanceof PostgresDatabase) {
+                        return queryPostgres(catalogAndSchema, table);
                     }
 
                     String catalog = ((AbstractJdbcDatabase) database).getJdbcCatalogName(catalogAndSchema);
@@ -989,6 +1022,8 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                         return queryMssql(catalogAndSchema, null);
                     } else if (database instanceof Db2zDatabase) {
                         return queryDb2Zos(catalogAndSchema, null);
+                    } else if ( database instanceof PostgresDatabase) {
+                        return queryPostgres(catalogAndSchema, table);
                     }
 
                     String catalog = ((AbstractJdbcDatabase) database).getJdbcCatalogName(catalogAndSchema);
@@ -1038,8 +1073,8 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
 
                     String sql = "SELECT null as TABLE_CAT, a.OWNER as TABLE_SCHEM, a.TABLE_NAME as TABLE_NAME, " +
                             "a.TEMPORARY as TEMPORARY, a.DURATION as DURATION, 'TABLE' as TABLE_TYPE, " +
-                             "c.COMMENTS as REMARKS, CASE WHEN A.tablespace_name = " +
-                              "(SELECT DEFAULT_TABLESPACE FROM USER_USERS) THEN NULL ELSE tablespace_name END AS tablespace_name  " +
+                             "c.COMMENTS as REMARKS, A.tablespace_name as tablespace_name, CASE WHEN A.tablespace_name = " +
+                            "(SELECT DEFAULT_TABLESPACE FROM USER_USERS) THEN 'true' ELSE null END as default_tablespace " +
                             "from ALL_TABLES a " +
                             "join ALL_TAB_COMMENTS c on a.TABLE_NAME=c.table_name and a.owner=c.owner ";
                     String allCatalogsString = getAllCatalogsStringScratchData();
@@ -1072,6 +1107,13 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                     }
 
                     return executeAndExtract(sql, database);
+                }
+                private List<CachedRow> queryPostgres(CatalogAndSchema catalogAndSchema, String tableName) throws SQLException {
+                    String catalog = ((AbstractJdbcDatabase) database).getJdbcCatalogName(catalogAndSchema);
+                    String schema = ((AbstractJdbcDatabase) database).getJdbcSchemaName(catalogAndSchema);
+                    return extract(databaseMetaData.getTables(catalog, schema, ((tableName == null) ?
+                            SQL_FILTER_MATCH_ALL : tableName), new String[]{"TABLE", "PARTITIONED TABLE"}));
+
                 }
             });
         }
@@ -1256,6 +1298,57 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                                     "AND k.table_name = c.table_name " +
                                     "AND k.owner = c.owner " +
                                     "ORDER BY column_name";
+                            try {
+                                return executeAndExtract(sql, database);
+                            } catch (DatabaseException e) {
+                                throw new SQLException(e);
+                            }
+                        } else if (database instanceof CockroachDatabase) {
+                            // This is the same as the query generated by PGJDBC's getPrimaryKeys method, except it
+                            // also adds an `asc_or_desc` column to the result.
+                            String sql = "SELECT " +
+                                    "  result.table_cat, " +
+                                    "  result.table_schem, " +
+                                    "  result.table_name, " +
+                                    "  result.column_name, " +
+                                    "  result.key_seq, " +
+                                    "  result.pk_name, " +
+                                    "  CASE result.indoption[result.key_seq - 1] & 1 " +
+                                    "    WHEN 1 THEN 'D' " +
+                                    "    ELSE 'A' " +
+                                    "    END AS asc_or_desc " +
+                                    "FROM " +
+                                    "  (" +
+                                    "    SELECT " +
+                                    "      NULL AS table_cat, " +
+                                    "      n.nspname AS table_schem, " +
+                                    "      ct.relname AS table_name, " +
+                                    "      a.attname AS column_name, " +
+                                    "      (information_schema._pg_expandarray(i.indkey)).n " +
+                                    "        AS key_seq, " +
+                                    "      ci.relname AS pk_name, " +
+                                    "      information_schema._pg_expandarray(i.indkey) AS keys, " +
+                                    "      i.indoption, " +
+                                    "      a.attnum AS a_attnum " +
+                                    "    FROM " +
+                                    "      pg_catalog.pg_class AS ct " +
+                                    "      JOIN pg_catalog.pg_attribute AS a ON (ct.oid = a.attrelid) " +
+                                    "      JOIN pg_catalog.pg_namespace AS n ON " +
+                                    "          (ct.relnamespace = n.oid) " +
+                                    "      JOIN pg_catalog.pg_index AS i ON (a.attrelid = i.indrelid) " +
+                                    "      JOIN pg_catalog.pg_class AS ci ON (ci.oid = i.indexrelid) " +
+                                    "    WHERE " +
+                                    "      true " +
+                                    "      AND n.nspname = '" + ((AbstractJdbcDatabase) database).getJdbcSchemaName(catalogAndSchema) + "' " +
+                                    "      AND ct.relname = '" + table + "' " +
+                                    "      AND i.indisprimary" +
+                                    "  ) " +
+                                    "    AS result " +
+                                    "WHERE " +
+                                    "  result.a_attnum = (result.keys).x " +
+                                    "ORDER BY " +
+                                    "  result.table_name, result.pk_name, result.key_seq";
+
                             try {
                                 return executeAndExtract(sql, database);
                             } catch (DatabaseException e) {

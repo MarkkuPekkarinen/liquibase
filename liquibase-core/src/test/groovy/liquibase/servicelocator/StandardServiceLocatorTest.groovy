@@ -2,8 +2,9 @@ package liquibase.servicelocator
 
 import liquibase.change.Change
 import liquibase.changelog.ChangeLogHistoryService
-import liquibase.command.LiquibaseCommand
+import liquibase.command.CommandStep
 import liquibase.database.Database
+import liquibase.database.DatabaseConnection
 import liquibase.datatype.LiquibaseDataType
 import liquibase.diff.DiffGenerator
 import liquibase.diff.compare.DatabaseObjectComparator
@@ -30,6 +31,7 @@ class StandardServiceLocatorTest extends Specification {
     @Unroll("#featureName: #type.name")
     def "all classes are listed in service loader files"() {
         when:
+        Assume.assumeTrue(this.class.name == "liquibase.servicelocator.StandardServiceLocatorTest")
         def subclasses = TestUtil.getClasses(type)
         subclasses = subclasses
                 .findAll({
@@ -37,7 +39,7 @@ class StandardServiceLocatorTest extends Specification {
                 })
         def subclassText = new TreeSet(subclasses.collect({ it.name })).join("\n")
 
-        Assume.assumeTrue("No "+type.name+" classes found", subclasses.size() > 0)
+        Assume.assumeFalse("No "+type.name+" classes found", subclasses.size() == 0)
 
         def loaderFile = new File("src/main/resources/META-INF/services/" + type.getName())
 
@@ -50,7 +52,7 @@ class StandardServiceLocatorTest extends Specification {
                 ChangeLogHistoryService.class,
                 Database.class,
                 ChangeLogParser.class,
-                LiquibaseCommand.class,
+                CommandStep.class,
                 LiquibaseDataType.class,
                 DiffGenerator.class,
                 DatabaseObjectComparator.class,
@@ -66,6 +68,7 @@ class StandardServiceLocatorTest extends Specification {
                 SnapshotGenerator.class,
                 Executor.class,
                 LicenseService.class,
+                DatabaseConnection.class,
         ]
     }
 }

@@ -11,6 +11,7 @@ import liquibase.exception.SetupException;
 import liquibase.exception.UnexpectedLiquibaseException;
 import liquibase.exception.ValidationErrors;
 import liquibase.resource.ResourceAccessor;
+import liquibase.util.FileUtil;
 import liquibase.util.ObjectUtil;
 import liquibase.util.StreamUtil;
 import liquibase.util.StringUtil;
@@ -113,20 +114,21 @@ public class SQLFileChange extends AbstractSQLChange {
             return null;
         }
 
-        InputStream inputStream = null;
+        InputStream inputStream;
         try {
             String relativeTo = null;
             if (ObjectUtil.defaultIfNull(isRelativeToChangelogFile(), false)) {
-                relativeTo = getChangeSet().getFilePath();
+                relativeTo = getChangeSet().getChangeLog().getPhysicalFilePath();
             }
             inputStream = Scope.getCurrentScope().getResourceAccessor().openStream(relativeTo, path);
         } catch (IOException e) {
             throw new IOException("Unable to read file '" + path + "'", e);
         }
-        if (inputStream == null) {
-            throw new IOException("File does not exist: '" + path + "'");
+
+        if (inputStream != null) {
+            return inputStream;
         }
-        return inputStream;
+        throw new IOException(FileUtil.getFileNotFoundMessage(path));
     }
 
     @Override

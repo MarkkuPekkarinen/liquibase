@@ -50,15 +50,17 @@ public class StringUtil {
             return returnString;
         }
     }
-    
+
     /**
+     *
      * Removes any comments from multiple line SQL using {@link #stripComments(String)}
      *  and then extracts each individual statement using {@link #splitSQL(String, String)}.
-     * 
+     *
      * @param multiLineSQL A String containing all the SQL statements
      * @param stripComments If true then comments will be stripped, if false then they will be left in the code
+     *
      */
-    public static String[] processMutliLineSQL(String multiLineSQL, boolean stripComments, boolean splitStatements, String endDelimiter) {
+    public static String[] processMultiLineSQL(String multiLineSQL, boolean stripComments, boolean splitStatements, String endDelimiter) {
 
         StringClauses parsed = SqlParser.parse(multiLineSQL, true, !stripComments);
 
@@ -93,6 +95,20 @@ public class StringUtil {
         }
 
         return returnArray.toArray(new String[returnArray.size()]);
+    }
+
+    /**
+     *
+     * Removes any comments from multiple line SQL using {@link #stripComments(String)}
+     *  and then extracts each individual statement using {@link #splitSQL(String, String)}.
+     *
+     * @param       multiLineSQL   A String containing all the SQL statements
+     * @param       stripComments  If true then comments will be stripped, if false then they will be left in the code
+     * @deprecated  The new method is {@link #processMultiLineSQL(String, boolean, boolean, String)} (String)}
+     *
+     */
+    public static String[] processMutliLineSQL(String multiLineSQL, boolean stripComments, boolean splitStatements, String endDelimiter) {
+        return processMultiLineSQL(multiLineSQL, stripComments, splitStatements, endDelimiter);
     }
 
     /**
@@ -160,7 +176,7 @@ public class StringUtil {
      * Splits a candidate multi-line SQL statement along ;'s and "go"'s.
      */
     public static String[] splitSQL(String multiLineSQL, String endDelimiter) {
-        return processMutliLineSQL(multiLineSQL, false, true, endDelimiter);
+        return processMultiLineSQL(multiLineSQL, false, true, endDelimiter);
     }
 
     /**
@@ -183,6 +199,9 @@ public class StringUtil {
     }
 
     public static String join(String[] array, String delimiter) {
+        if (array == null) {
+            return null;
+        }
         return join(Arrays.asList(array), delimiter);
     }
 
@@ -503,6 +522,63 @@ public class StringUtil {
         return sb.toString();
     }
 
+    /**
+     * Converts a camelCase string to a kabob-case one
+     */
+    public static String toKabobCase(String string) {
+        if (string == null) {
+            return null;
+        }
+
+        if (string.length() == 1) {
+            return string;
+        }
+
+        StringBuilder outString = new StringBuilder();
+        char[] charString = string.toCharArray();
+        for (int i=0; i<charString.length; i++) {
+            char letter = charString[i];
+            if (i == 0) {
+                outString.append(Character.toLowerCase(letter));
+                continue;
+            }
+            if (Character.isUpperCase(letter)) {
+                outString.append('-').append(Character.toLowerCase(letter));
+            } else {
+                outString.append(letter);
+            }
+        }
+
+        return outString.toString();
+    }
+
+    /**
+     * Converts a kabob-case or underscore_case string to a camel-case one
+     */
+    public static String toCamelCase(String string) {
+        if (string == null) {
+            return null;
+        }
+
+        StringBuilder outString = new StringBuilder();
+        char[] charString = string.toCharArray();
+        boolean uppercaseNext = false;
+        for (char letter : charString) {
+            if (letter == '-' || letter == '_') {
+                uppercaseNext = true;
+            } else {
+                if (uppercaseNext) {
+                    outString.append(Character.toUpperCase(letter));
+                    uppercaseNext = false;
+                } else {
+                    outString.append(letter);
+                }
+            }
+        }
+
+        return outString.toString();
+    }
+
     public interface StringUtilFormatter<Type> {
         String toString(Type obj);
     }
@@ -686,7 +762,7 @@ public class StringUtil {
             // since line comments could be inside block comments, we want to
             // remove them first.
             String lastBlockComment = getLastBlockComment(str.toString());
-            if (isNotEmpty(lastBlockComment)) {
+            if (lastBlockComment != null && ! lastBlockComment.isEmpty()) {
                 str.setLength(str.length() - lastBlockComment.length());
                 // we just modified the end of the string,
                 // do another loop to check for next block or line comments
@@ -694,7 +770,7 @@ public class StringUtil {
             }
             // now check for the line comments
             String lastLineComment = getLastLineComment(str.toString());
-            if (isNotEmpty(lastLineComment)) {
+            if (lastLineComment != null && ! lastLineComment.isEmpty()) {
                 str.setLength(str.length() - lastLineComment.length());
                 // we just modified the end of the string,
                 // do another loop to check for next block or line comments
@@ -830,5 +906,21 @@ public class StringUtil {
         }
     }
 
+    public static String stripEnclosingQuotes(String string) {
+        if (string.length() > 1 &&
+                (string.charAt(0) == '"' || string.charAt(0) == '\'') &&
+                string.charAt(0) == string.charAt(string.length() - 1)) {
+            return substring(string, 1, string.length() - 1);
+        }
+        else {
+            return string;
+        }
+    }
 
+
+
+    /** Check whether the value is 'null' (case insensitive) */
+    public static boolean equalsWordNull(String value){
+        return "NULL".equalsIgnoreCase(value);
+    }
 }

@@ -78,8 +78,9 @@ public class MariaDBDatabase extends MySQLDatabase {
         if (PRODUCT_NAME.equalsIgnoreCase(conn.getDatabaseProductName())) {
             return true; // Identified as MariaDB product
         } else {
-            return (("MYSQL".equalsIgnoreCase(conn.getDatabaseProductName())) && conn.getDatabaseProductVersion()
-                    .toLowerCase().contains("mariadb"));
+            return ("MYSQL".equalsIgnoreCase(conn.getDatabaseProductName()) &&
+                (conn.getDatabaseProductVersion().toLowerCase().contains("mariadb") ||
+                 conn.getDatabaseProductVersion().toLowerCase().contains("clustrix")));
         }
     }
 
@@ -95,8 +96,9 @@ public class MariaDBDatabase extends MySQLDatabase {
     @Override
     public boolean supportsSequences() {
         try {
-            return getDatabaseMajorVersion() >= 10 && getDatabaseMinorVersion() >= 3;
-        } catch (DatabaseException e) {
+            // From https://liquibase.jira.com/browse/CORE-3457 (by Lijun Liao) corrected
+            int majorVersion = getDatabaseMajorVersion();
+            return majorVersion > 10 || (majorVersion == 10 && getDatabaseMinorVersion() >= 3);        } catch (DatabaseException e) {
             Scope.getCurrentScope().getLog(getClass()).fine("Cannot retrieve database version", e);
             return false;
         }

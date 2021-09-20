@@ -22,6 +22,7 @@ import liquibase.exception.LiquibaseException;
 import liquibase.exception.ValidationFailedException;
 import liquibase.executor.Executor;
 import liquibase.executor.ExecutorService;
+import liquibase.hub.HubConfiguration;
 import liquibase.listener.SqlListener;
 import liquibase.lockservice.LockService;
 import liquibase.lockservice.LockServiceFactory;
@@ -33,7 +34,10 @@ import liquibase.snapshot.SnapshotControl;
 import liquibase.snapshot.SnapshotGeneratorFactory;
 import liquibase.statement.core.DropTableStatement;
 import liquibase.structure.core.*;
-import liquibase.test.*;
+import liquibase.test.DatabaseTestContext;
+import liquibase.test.DatabaseTestURL;
+import liquibase.test.DiffResultAssert;
+import liquibase.test.JUnitResourceAccessor;
 import liquibase.util.RegexMatcher;
 import org.junit.After;
 import org.junit.Before;
@@ -93,8 +97,14 @@ public abstract class AbstractIntegrationTest {
         // Get the integration test properties for both global settings and (if applicable) local overrides.
         Properties integrationTestProperties;
         integrationTestProperties = new Properties();
-        integrationTestProperties.load(Thread.currentThread().getContextClassLoader().getResourceAsStream("liquibase/liquibase.integrationtest.properties"));
-        InputStream localProperties=Thread.currentThread().getContextClassLoader().getResourceAsStream("liquibase/liquibase.integrationtest.local.properties");
+        integrationTestProperties.load(
+           Thread.currentThread()
+                 .getContextClassLoader()
+                 .getResourceAsStream("liquibase/liquibase.integrationtest.properties"));
+        InputStream localProperties=
+           Thread.currentThread()
+                 .getContextClassLoader()
+                 .getResourceAsStream("liquibase/liquibase.integrationtest.local.properties");
         if(localProperties!=null)
             integrationTestProperties.load(localProperties);
 
@@ -117,6 +127,12 @@ public abstract class AbstractIntegrationTest {
         }
         this.setJdbcUrl(url);
 
+        String testHubApiKey = integrationTestProperties.getProperty("integration.test.hub.apiKey");
+        if (testHubApiKey != null) {
+            System.setProperty(HubConfiguration.LIQUIBASE_HUB_API_KEY.getKey(), testHubApiKey);
+            String testHubUrl = integrationTestProperties.getProperty("integration.test.hub.url");
+            System.setProperty(HubConfiguration.LIQUIBASE_HUB_URL.getKey(), testHubUrl);
+        }
         Scope.setScopeManager(new TestScopeManager());
     }
 
@@ -124,8 +140,14 @@ public abstract class AbstractIntegrationTest {
         try {
             Properties integrationTestProperties;
             integrationTestProperties = new Properties();
-            integrationTestProperties.load(Thread.currentThread().getContextClassLoader().getResourceAsStream("liquibase/liquibase.integrationtest.properties"));
-            InputStream localProperties = Thread.currentThread().getContextClassLoader().getResourceAsStream("liquibase/liquibase.integrationtest.local.properties");
+            integrationTestProperties.load(
+               Thread.currentThread()
+                     .getContextClassLoader()
+                     .getResourceAsStream("liquibase/liquibase.integrationtest.properties"));
+            InputStream localProperties =
+               Thread.currentThread()
+                     .getContextClassLoader()
+                     .getResourceAsStream("liquibase/liquibase.integrationtest.local.properties");
             if (localProperties != null)
                 integrationTestProperties.load(localProperties);
 
@@ -186,7 +208,7 @@ public abstract class AbstractIntegrationTest {
             }
 
             SnapshotGeneratorFactory.resetAll();
-            ExecutorService.getInstance().reset();
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).reset();
 
             LockServiceFactory.getInstance().resetAll();
             LockServiceFactory.getInstance().getLockService(database).init();
@@ -302,7 +324,7 @@ public abstract class AbstractIntegrationTest {
             if (shouldRollBack()) {
                 database.rollback();
             }
-            ExecutorService.getInstance().clearExecutor(database);
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).clearExecutor("jdbc", database);
             database.setDefaultSchemaName(null);
             database.setOutputDefaultCatalog(true);
             database.setOutputDefaultSchema(true);
@@ -320,7 +342,7 @@ public abstract class AbstractIntegrationTest {
     }
 
     private Liquibase createLiquibase(String changeLogFile, ResourceAccessor resourceAccessor) {
-        ExecutorService.getInstance().clearExecutor(database);
+        Scope.getCurrentScope().getSingleton(ExecutorService.class).clearExecutor("jdbc", database);
         database.resetInternalState();
         return new Liquibase(changeLogFile, resourceAccessor, database);
     }
@@ -797,7 +819,7 @@ public abstract class AbstractIntegrationTest {
         clearDatabase();
 
         //run again to test changelog testing logic
-        Executor executor = ExecutorService.getInstance().getExecutor(database);
+        Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database);
         try {
             executor.execute(new DropTableStatement("lbcat2", "lbcat2", database.getDatabaseChangeLogTableName(), false));
         } catch (DatabaseException e) {
@@ -913,7 +935,7 @@ public abstract class AbstractIntegrationTest {
 
     private void dropDatabaseChangeLogTable(String catalog, String schema, Database database) {
         try {
-            ExecutorService.getInstance().getExecutor(database).execute(
+            Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database).execute(
                 new DropTableStatement(catalog, schema, database.getDatabaseChangeLogTableName(), false)
             );
         } catch (DatabaseException e) {
@@ -1026,10 +1048,10 @@ public abstract class AbstractIntegrationTest {
         liquibase.update("hyphen-context-using-sql,camelCaseContextUsingSql");
 
         SnapshotGeneratorFactory tableSnapshotGenerator = SnapshotGeneratorFactory.getInstance();
-        assertNotNull(tableSnapshotGenerator.has(new Table().setName("hyphen_context"), database));
-        assertNotNull(tableSnapshotGenerator.has(new Table().setName("camel_context"), database));
-        assertNotNull(tableSnapshotGenerator.has(new Table().setName("bar_id"), database));
-        assertNotNull(tableSnapshotGenerator.has(new Table().setName("foo_id"), database));
+        assertTrue(tableSnapshotGenerator.has(new Table().setName("hyphen_context"), database));
+        assertTrue(tableSnapshotGenerator.has(new Table().setName("camel_context"), database));
+        assertTrue(tableSnapshotGenerator.has(new Table().setName("bar_id"), database));
+        assertTrue(tableSnapshotGenerator.has(new Table().setName("foo_id"), database));
     }
 
     @Test

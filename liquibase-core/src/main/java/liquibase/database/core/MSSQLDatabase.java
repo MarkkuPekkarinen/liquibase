@@ -2,7 +2,7 @@ package liquibase.database.core;
 
 import liquibase.CatalogAndSchema;
 import liquibase.Scope;
-import liquibase.configuration.LiquibaseConfiguration;
+import liquibase.GlobalConfiguration;
 import liquibase.database.AbstractJdbcDatabase;
 import liquibase.database.DatabaseConnection;
 import liquibase.database.OfflineConnection;
@@ -335,7 +335,7 @@ public class MSSQLDatabase extends AbstractJdbcDatabase {
     @Override
     public String getViewDefinition(CatalogAndSchema schema, String viewName) throws DatabaseException {
         schema = schema.customize(this);
-        List<String> defLines = (List<String>) ExecutorService.getInstance().getExecutor(this)
+        List<String> defLines = (List<String>) Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this)
             .queryForList(
                 new GetViewDefinitionStatement(schema.getCatalogName(), schema.getSchemaName(), viewName),
                 String.class
@@ -377,7 +377,7 @@ public class MSSQLDatabase extends AbstractJdbcDatabase {
             return super.escapeObjectName(objectName, objectType);
         }
 
-        boolean includeCatalog = LiquibaseConfiguration.getInstance().shouldIncludeCatalogInSpecification();
+        boolean includeCatalog = GlobalConfiguration.INCLUDE_CATALOG_IN_SPECIFICATION.getCurrentValue();
         if ((catalogName != null) && (includeCatalog || !catalogName.equalsIgnoreCase(this.getDefaultCatalogName()))) {
             return super.escapeObjectName(catalogName, schemaName, objectName, objectType);
         } else {
@@ -410,7 +410,7 @@ public class MSSQLDatabase extends AbstractJdbcDatabase {
                     String sql =
                         "SELECT CONVERT([sysname], DATABASEPROPERTYEX(N'" + escapeStringForDatabase(catalog) +
                             "', 'Collation'))";
-                    String collation = ExecutorService.getInstance().getExecutor(this)
+                    String collation = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this)
                         .queryForObject(new RawSqlStatement(sql), String.class);
                     caseSensitive = (collation != null) && !collation.contains("_CI_");
                 } else if (getConnection() instanceof OfflineConnection) {
@@ -594,7 +594,7 @@ public class MSSQLDatabase extends AbstractJdbcDatabase {
                     "         WHEN 5 THEN 'Azure'\n" +
                     "         ELSE 'Unknown'\n" +
                     "       END";
-                return ExecutorService.getInstance().getExecutor(this)
+                return Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", this)
                     .queryForObject(new RawSqlStatement(sql), String.class);
             }
         } catch (DatabaseException e) {

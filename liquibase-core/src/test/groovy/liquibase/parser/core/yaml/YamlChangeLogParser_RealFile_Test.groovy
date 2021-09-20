@@ -114,6 +114,15 @@ public class YamlChangeLogParser_RealFile_Test extends Specification {
         change.columns[2].constraints == null
     }
 
+    def "throws a nice validation error when changeSet node has typo in name"() throws ChangeLogParseException {
+        def path = "liquibase/parser/core/yaml/typoChangeLog.yaml"
+        when:
+        new YamlChangeLogParser().parse(path, new ChangeLogParameters(), new JUnitResourceAccessor());
+
+        then:
+        thrown(ChangeLogParseException.class)
+    }
+
     def "able to parse a changelog with multiple changeSets multiChangeSetChangeLog.yaml"() throws Exception {
         def path = "liquibase/parser/core/yaml/multiChangeSetChangeLog.yaml"
         when:
@@ -550,6 +559,7 @@ public class YamlChangeLogParser_RealFile_Test extends Specification {
         ((CreateIndexChange) changeLog.getChangeSet(path, "nvoxland", "different object types for column").changes[2]).columns[0].name == "id"
         assert ((CreateIndexChange) changeLog.getChangeSet(path, "nvoxland", "different object types for column").changes[2]).columns[0].constraints.isUnique()
 
+        ((LoadDataChange) changeLog.getChangeSet(path, "nvoxland", "different object types for column").changes[3]).quotchar == "\""
         ((LoadDataChange) changeLog.getChangeSet(path, "nvoxland", "different object types for column").changes[3]).columns[0].name == "id"
         ((LoadDataChange) changeLog.getChangeSet(path, "nvoxland", "different object types for column").changes[3]).columns[1].name == "new_col"
         ((LoadDataChange) changeLog.getChangeSet(path, "nvoxland", "different object types for column").changes[3]).columns[1].header == "new_col_header"

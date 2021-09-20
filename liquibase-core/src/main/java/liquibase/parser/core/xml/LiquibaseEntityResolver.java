@@ -2,10 +2,7 @@ package liquibase.parser.core.xml;
 
 import liquibase.Scope;
 import liquibase.logging.Logger;
-import liquibase.resource.ClassLoaderResourceAccessor;
-import liquibase.resource.CompositeResourceAccessor;
-import liquibase.resource.InputStreamList;
-import liquibase.resource.ResourceAccessor;
+import liquibase.resource.*;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.ext.EntityResolver2;
@@ -19,7 +16,10 @@ import java.io.InputStream;
  */
 public class LiquibaseEntityResolver implements EntityResolver2 {
 
+    private static ClassLoaderResourceAccessor fallbackResourceAccessor;
+
     @Override
+    @java.lang.SuppressWarnings("squid:S2095")
     public InputSource resolveEntity(String name, String publicId, String baseURI, String systemId) throws SAXException, IOException {
         Logger log = Scope.getCurrentScope().getLog(getClass());
 
@@ -34,13 +34,16 @@ public class LiquibaseEntityResolver implements EntityResolver2 {
                 .replace("http://www.liquibase.org/xml/ns/migrator/", "http://www.liquibase.org/xml/ns/dbchangelog/")
                 .replaceFirst("https?://", "");
 
-        //need to ensure XSD can be loaded from the system classpath, even if resourceAccessor is not configured to look there
-        ResourceAccessor currentScopeResourceAccessor = Scope.getCurrentScope().getResourceAccessor();
-        ClassLoaderResourceAccessor classLoaderResourceAccessor = new ClassLoaderResourceAccessor(getClass().getClassLoader());
-        InputStreamList streams = new CompositeResourceAccessor(currentScopeResourceAccessor, classLoaderResourceAccessor).openStreams(null, path);
+
+        ResourceAccessor resourceAccessor = Scope.getCurrentScope().getResourceAccessor();
+        InputStreamList streams = resourceAccessor.openStreams(null, path);
         if (streams.isEmpty()) {
-            log.fine("Unable to resolve XML entity locally. Will load from network.");
-            return null;
+            streams = getFallbackResourceAccessor().openStreams(null, path);
+
+            if (streams.isEmpty()) {
+                log.fine("Unable to resolve XML entity locally. Will load from network.");
+                return null;
+            }
         } else if (streams.size() == 1) {
             log.fine("Found XML entity at " + streams.getURIs().get(0));
         } else if (streams.size() > 1) {
@@ -54,6 +57,17 @@ public class LiquibaseEntityResolver implements EntityResolver2 {
 
         return source;
 
+    }
+
+    /**
+     * ResourceAccessor to use if the standard one does not have the XSD files in it.
+     * Returns a ClassLoaderResourceAccessor that checks the system classloader which should include the liquibase.jar.
+     */
+    protected ResourceAccessor getFallbackResourceAccessor() {
+        if (fallbackResourceAccessor == null) {
+            fallbackResourceAccessor = new ClassLoaderResourceAccessor();
+        }
+        return fallbackResourceAccessor;
     }
 
     @Override
