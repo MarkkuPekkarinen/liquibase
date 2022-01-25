@@ -1544,6 +1544,11 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                         if (tableName != null) {
                             sql += " and table_name='" + tableName + "'";
                         }
+                    } else if (database.getClass().getName().contains("MaxDB")) { //have to check classname as this is currently an extension
+                        sql = "select distinct tablename AS TABLE_NAME, constraintname AS CONSTRAINT_NAME from CONSTRAINTCOLUMNS WHERE CONSTRAINTTYPE = 'UNIQUE_CONST'";
+                        if (tableName != null) {
+                            sql += " and tablename='" + tableName + "'";
+                        }
                     } else if (database instanceof MSSQLDatabase) {
                         sql =
                                 "SELECT " +
@@ -1653,6 +1658,25 @@ public class JdbcDatabaseSnapshot extends DatabaseSnapshot {
                             sql += " and systable.table_name = '" + tableName + "'";
                         }
                     } else {
+                        if (database instanceof H2Database) {
+                            try {
+                                if (database.getDatabaseMajorVersion() >= 2) {
+                                    sql = "select CONSTRAINT_NAME, CONSTRAINT_TYPE, TABLE_NAME "
+                                            + "from " + database.getSystemSchema() + ".table_constraints "
+                                            + "where constraint_schema='" + jdbcSchemaName + "' "
+                                            + "and constraint_catalog='" + jdbcCatalogName + "' "
+                                            + "and constraint_type='UNIQUE'";
+                                    if (tableName != null) {
+                                        sql += " and table_name='" + tableName + "'";
+                                    }
+
+                                    return sql;
+                                }
+                            } catch (DatabaseException e) {
+                                Scope.getCurrentScope().getLog(getClass()).fine("Cannot determine h2 version, using default unique constraint query");
+                            }
+                        }
+
                         sql = "select CONSTRAINT_NAME, CONSTRAINT_TYPE, TABLE_NAME "
                                 + "from " + database.getSystemSchema() + ".constraints "
                                 + "where constraint_schema='" + jdbcSchemaName + "' "

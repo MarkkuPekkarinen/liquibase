@@ -1,5 +1,94 @@
 Liquibase Core Changelog
 ===========================================
+
+Changes in version 4.7.1 (2022.01.21)
+
+- Fix bug which makes Liquibase misidentify your database dialect if the string 'edb' is in your connection url. (#2364)
+- Output changeset execution to UI like rollback does (#1932)
+- Support MaxDB for sequences (#932)
+- Include columnDataType in generated setColumnRemarks changesets (#2188)
+- Use database time for changeloglock table (#2217)
+- Mysql: support additional information "double" datatypes (#2293)
+- Correctly handle old "liquibase tagExists myTag" style CLI structure (#2269)
+- Correctly handle cacheSize in mariadb (#2270)
+- Mark liquibase-maven-plugin logging configuration as deprecated (#2261)
+- Added validation errors for SQLite and DB2z databases (#2359)
+
+Changes in version 4.7.0 (2022.01.07)
+
+Liquibase 4.7.0 introduces the init command with the project subcommand, which helps to build the necessary
+configuration files for using Liquibase or, if you already use Liquibase, create new project files with minimal input.[DAT-8640]
+
+Additionally, we have updated the Liquibase Getting Started tutorials and sample changelog files in the installation package.
+From now on, you can use sample SQL, XML, JSON, and YAML changelog files with the corresponding changesets.
+
+Enhancements
+- [PRO] Improved the output of the rollback-one-update command
+- [PR#2244] [szandany] Enabled the use of the jdbc:edb URL for Liquibase to recognize EnterpriseDB
+- [PR#2225] [nvoxland] [catholic-indulgence-vaper] Enabled the use of lowercase sys.synonyms objects for the generate-changelog and diff-changelog commands in Liquibase and SQL Server. The PR fixes PR#2044.
+- Added DB2 on z/OS database type and Java classes for Liquibase
+- Upgrade h2 to newer version 2.0.206
+
+Fixes
+- Fixed the generateChangeLog wrong dependency order: the addPrimaryKey Change Type appeared before its base table in PostgreSQL [DAT-8256]
+- Fixed the quality checks settings file to be created using both relative and absolute paths
+- Fixed quality checks reporting only the first failure for a changeset to report all failures in outputs
+- PR#2066] [smainz] Fixed the loadData Change Type to recognize CSV files when loading data with the path that contains a dot character ('.')
+- [PR#2071] [nhumblot] [philhinco] Fixed the addNotNullConstraint Change Type causing the "Data too long" error message. The PR fixes PR#1054.
+- [PR#2073] [smainz] Fixed the relativeToChangelogFile attribute for loadData, createProcedure, and createView Change Types
+- [PR#2228] Handle the fact that FK names are not always unique
+- [PR#2081] fix OSGI support (manifest, class loading)
+- [PR#928] addColumn should support not-null constraint
+
+Changes in version 4.6.2(2021.11.30)
+
+Liquibase 4.6.2 introduces the multiple objects name quality check that allows you to define and check the naming pattern for several objects rather than one object.
+For example, you do not want to have a dash in the table, column, and sequence names. With the multiple objects name check, you can specify a pattern to check for dashes
+and choose tables, columns, and sequences as the objects to check. In version 4.6.2, the check is available for:
+- Table
+- Column
+- Sequence
+You can use two patterns for multiple object check:
+- Multiple objects’ name in search:
+    - Table name matches a pattern
+    - Column name matches a pattern
+    - Sequence name matches a pattern
+- Multiple objects’ name is not in search:
+    - Table name does not match a specific pattern
+    - Column name does not match a specific pattern
+    - Sequence name does not match a specific pattern
+
+Enhancements
+- [PRO] Added the ability to configure the DDL_LOCK_TIMEOUT parameter for Oracle without SQL Plus and define the connection timeout.
+- Improved the output of the SqlUserDefinedPatternCheck quality check copy
+- Changed the default value of the strict parameter to false. You can set the strict parameter as follows:
+- liquibase.strict=false|true in your liquibase.properties file
+- Improved the handling of nested changelog preconditions. The PR fixes PR#1624.
+- Enabled the update operations to continue if the DATABASECHANGELOGLOCK table already exists, which helps to serialize all processes following schema creation.
+- Added support for MySQL function indexes. The PR fixes PR#1626.
+- Added support for the NOT NULL constraint with an initial default value in the addColumn Change Type
+- Added a flag to control the logging of SQL statements and SQL execution output
+- Added support for the remarks attribute in a primary key column tag for MariaDB
+- Implemented the handling of the GENERATED ALWAYS AS clause while creating a table for PostgreSQL
+- Added the ability for Liquibase to load an additional directory of liquibase_libs in the current working directory to the classpath. With the liquibase_libs directory located in the /lib directory, projects can have separate extensions, drivers, and versions specific to a project
+
+Fixes
+- [PRO] Fixed the snapshot command failing against CockroachDB with the Liquibase Pro license key applied
+- Fixed the naming of the checks settings file shown as null if the file was corrupted
+- Fixed the issue with Liquibase escaping the backslash in values stored in objects. The PR fixes PR#1598.
+- Fixed the generate-changelog command to generate the NUMERIC[] data type for PostgreSQL correctly
+- Fixed the parsing logic for YAMLChangelogParser and changeLogId in a Map. The PR fixes PR#1988.
+- Fixed the --verbose flag used in the unexpected-changesets command. The PR fixes PR#1987.
+- Fixed the exit code for the validate command running in automation to be 1 when there is an error. The PR fixes PR#1006.
+- Fixed the dependency order for a changelog file with the addPrimaryKey Change Type generated by the generate-changelog command for PostgreSQL
+- [PRO] Fixed the following environment variables LIQUIBASE_COMMAND_CHECKS_CONFIGURE_CHECKS_SETTINGS_FILE, LIQUIBASE_COMMAND_CHECKS_RUN_CHECKS_SETTINGS_FILE, and LIQUIBASE_COMMAND_CHECKS_SHOW_CHECKS_SETTINGS_FILE to be detected when running the quality checks commands [DAT-8546]
+- Fixed quality checks reporting only the first failure in a changeset to report all failures found
+- Fixed the time data type to be precise for PostgreSQL. The PR fixes PR#1774.
+- Fixed the SQL generated by the alterSequence Change Type to be compatible with the Oracle, PostgreSQL, MariaDB, and MSSQL databases
+- Fixed the Liquibase Cassandra extension failing when username and password are enabled
+- Fixed the LOCKGRANTED column to include time zone information in the DATABASECHANGELOGLOCK table
+- Fixed the classpath to include files with the relativeToChangelog=true parameter for Spring Boot
+
 Changes in version 4.6.1(2021.11.04)
 
 - Fixed the liquibase-pro-4.6.xsd
