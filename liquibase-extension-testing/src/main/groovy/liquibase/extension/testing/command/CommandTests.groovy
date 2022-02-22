@@ -277,6 +277,9 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
                 (Scope.Attr.logService.name())                        : logService
         ], {
             try {
+                if (testDef.commandTestDefinition.beforeMethodInvocation != null) {
+                    testDef.commandTestDefinition.beforeMethodInvocation.call()
+                }
                 def returnValue = commandScope.execute()
                 assert testDef.expectedException == null : "An exception was expected but the command completed successfully"
                 return returnValue
@@ -337,6 +340,9 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
                 if (testDef.expectFileToNotExist != null) {
                     assert !testDef.expectFileToNotExist.exists(): "File '${testDef.expectFileToNotExist.getAbsolutePath()}' should not exist"
                 }
+                if (testDef.expectations != null) {
+                    testDef.expectations.call()
+                }
             } finally {
                 if (testDef.setup != null) {
                     for (def setup : testDef.setup) {
@@ -362,6 +368,11 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
                 substring = (caseInsensitive && substring != null ? substring.toLowerCase() : substring)
                 assert !actual.contains(StringUtil.standardizeLineEndings(StringUtil.trimToEmpty(substring))): "$actual does not contain: '$substring'"
             }
+
+            @Override
+            String getExpected() {
+                return substring
+            }
         }
     }
 
@@ -381,6 +392,11 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
                     int count = (actual.split(Pattern.quote(edited), -1).length) - 1
                     assert count == occurrences: "$actual does not contain '$substring' $occurrences times.  It appears $count times"
                 }
+            }
+
+            @Override
+            String getExpected() {
+                return substring
             }
         }
     }
@@ -458,7 +474,7 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
                     try {
                         ((OutputCheck) expectedOutputCheck).check(fullOutput)
                     } catch (AssertionError e) {
-                        Assert.fail("$fullOutput : ${e.getMessage()}")
+                        throw new ComparisonFailure(e.getMessage(), expectedOutputCheck.expected, fullOutput)
                     }
                 } else {
                     Assert.fail "Unknown $outputDescription check type: ${expectedOutputCheck.class.name}"
@@ -568,7 +584,13 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
          * the same scope as the command that is run for the test. This method will always be called, regardless of
          * exceptions thrown from within the test.
          */
-        Callable<Void> afterMethodInvocation
+        Closure<Void> afterMethodInvocation
+        /**
+         * An optional method that will be called before the execution of each run command. This is executed within
+         * the same scope as the command that is run for the test. Exceptions thrown from this method will cause the
+         * test to fail.
+         */
+        Closure<Void> beforeMethodInvocation
 
         void run(@DelegatesTo(RunTestDefinition) Closure testClosure) {
             run(null, testClosure)
@@ -617,6 +639,7 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
         private Map<String, ?> arguments = new HashMap<>()
         private Map<String, ?> expectedFileContent = new HashMap<>()
         private Map<String, Object> expectedDatabaseContent = new HashMap<>()
+        private Closure<Void> expectations = null;
 
         private List<TestSetup> setup
 
@@ -677,6 +700,10 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
 
         def setExpectedFileContent(Map<String, Object> content) {
             this.expectedFileContent = content
+        }
+
+        def setExpectations(Closure<Void> expectations) {
+            this.expectations = expectations;
         }
 
         def setExpectedDatabaseContent(Map<String, Object> content) {
@@ -866,6 +893,10 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
             this.setups.add(new SetupCreateTempResources(originalFile, newFile, baseDir))
         }
 
+        void registerValueProvider(Closure<ConfigurationValueProvider> configurationValueProvider) {
+            this.setups.add(new SetupConfigurationValueProvider(configurationValueProvider))
+        }
+
         /**
          * @param fileLastModifiedDate if not null, the newly created file's last modified date will be set to this value
          */
@@ -968,6 +999,10 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
 
     interface OutputCheck {
         def check(String actual) throws AssertionError
+        /**
+         * @return the expected value from this output check
+         */
+        String getExpected()
     }
 
     interface FileContentCheck {
