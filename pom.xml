@@ -227,7 +227,7 @@
         <dependency>
             <groupId>net.snowflake</groupId>
             <artifactId>snowflake-jdbc</artifactId>
-            <version>3.13.20</version>
+            <version>3.13.21</version>
         </dependency>
 
 
@@ -247,7 +247,7 @@
         <dependency>
             <groupId>org.glassfish.jaxb</groupId>
             <artifactId>jaxb-runtime</artifactId>
-            <version>2.3.6</version>
+            <version>4.0.0</version>
             <scope>test</scope>
         </dependency>
     </dependencies>
