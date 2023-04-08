@@ -6,7 +6,7 @@ public class MdcKey {
     public static final String CHANGESET_AUTHOR = "changesetAuthor";
     public static final String CHANGESET_FILEPATH = "changesetFilepath";
     public static final String CHANGESET_OUTCOME = "changesetOutcome";
-    public static final String LIQUIBASE_OPERATION = "liquibaseOperation";
+    public static final String LIQUIBASE_INTERNAL_COMMAND = "liquibaseInternalCommand";
     public static final String LIQUIBASE_TARGET_URL = "liquibaseTargetUrl";
     public static final String LIQUIBASE_REF_URL = "liquibaseReferenceUrl";
     public static final String LIQUIBASE_CATALOG_NAME = "liquibaseCatalogName";
@@ -21,6 +21,8 @@ public class MdcKey {
     public static final String LIQUIBASE_VERSION = "liquibaseVersion";
     public static final String LIQUIBASE_SYSTEM_NAME = "liquibaseSystemName";
     public static final String LIQUIBASE_SYSTEM_USER = "liquibaseSystemUser";
+    public static final String OUTPUT_FILE = "outputFile";
+    public static final String OUTPUT_FILE_ENCODING = "outputFileEncoding";
     public static final String ROLLBACK_TO_TAG = "rollbackToTag";
     public static final String CHANGELOG_FILE = "changelogFile";
     public static final String ROLLBACK_SCRIPT = "rollbackScript";
