@@ -7,7 +7,7 @@
     <name>Liquibase Parent</name>
     <groupId>org.liquibase</groupId>
     <artifactId>liquibase</artifactId>
-    <version>0-SNAPSHOT</version>
+    <version>4.22.0</version>
     <packaging>pom</packaging>
 
     <url>http://www.liquibase.com</url>
