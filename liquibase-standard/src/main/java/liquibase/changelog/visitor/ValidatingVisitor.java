@@ -4,7 +4,9 @@ import liquibase.ChecksumVersion;
 import liquibase.GlobalConfiguration;
 import liquibase.Scope;
 import liquibase.change.Change;
-import liquibase.changelog.*;
+import liquibase.changelog.ChangeSet;
+import liquibase.changelog.DatabaseChangeLog;
+import liquibase.changelog.RanChangeSet;
 import liquibase.changelog.filter.ChangeSetFilterResult;
 import liquibase.database.Database;
 import liquibase.database.DatabaseList;
@@ -26,7 +28,7 @@ public class ValidatingVisitor implements ChangeSetVisitor {
     private String errorPreconditionsMessage = null;
     private final List<FailedPrecondition> failedPreconditions = new ArrayList<>();
     private final List<ErrorPrecondition> errorPreconditions = new ArrayList<>();
-    private final Set<ChangeSet> duplicateChangeSets = new HashSet<>();
+    private final Set<ChangeSet> duplicateChangeSets = new LinkedHashSet<>();
     private final List<SetupException> setupExceptions = new ArrayList<>();
     private final List<Throwable> changeValidationExceptions = new ArrayList<>();
     private final ValidationErrors validationErrors = new ValidationErrors();
@@ -88,16 +90,8 @@ public class ValidatingVisitor implements ChangeSetVisitor {
     }
 
     private RanChangeSet findChangeSet(ChangeSet changeSet) {
-        RanChangeSet result = ranIndex.get(changeSet.toString(false));
-        if (result == null) {
-            for (RanChangeSet ranChangeSet : ranIndex.values()) {
-                if (ranChangeSet.isSameAs(changeSet)) {
-                    result = ranChangeSet;
-                    break;
-                }
-            }
-        }
-        return result;
+        String key = changeSet.toNormalizedString();
+        return ranIndex.get(key);
     }
         
     @Override
