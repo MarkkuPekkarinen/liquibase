@@ -188,7 +188,7 @@
         <dependency>
             <groupId>org.assertj</groupId>
             <artifactId>assertj-core</artifactId>
-            <version>3.24.2</version>
+            <version>3.25.1</version>
             <scope>test</scope>
         </dependency>
 
@@ -263,7 +263,7 @@
         <dependency>
             <groupId>org.mariadb.jdbc</groupId>
             <artifactId>mariadb-java-client</artifactId>
-            <version>3.2.0</version>
+            <version>3.3.2</version>
             <scope>test</scope>
         </dependency>
 
@@ -291,14 +291,14 @@
         <dependency>
             <groupId>net.snowflake</groupId>
             <artifactId>snowflake-jdbc</artifactId>
-            <version>3.14.3</version>
+            <version>3.14.4</version>
             <scope>test</scope>
         </dependency>
 
         <dependency>
             <groupId>org.firebirdsql.jdbc</groupId>
             <artifactId>jaybird</artifactId>
-            <version>5.0.2.java8</version>
+            <version>5.0.3.java8</version>
             <scope>test</scope>
         </dependency>
 
@@ -322,7 +322,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.11.0</version>
+                <version>3.12.1</version>
             </plugin>
 
             <plugin>
