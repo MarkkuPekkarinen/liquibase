@@ -7,6 +7,8 @@ import liquibase.changelog.filter.ContextChangeSetFilter;
 import liquibase.changelog.filter.DbmsChangeSetFilter;
 import liquibase.changelog.filter.LabelChangeSetFilter;
 import liquibase.changelog.visitor.ValidatingVisitor;
+import liquibase.changelog.visitor.ValidatingVisitorGenerator;
+import liquibase.changelog.visitor.ValidatingVisitorGeneratorFactory;
 import liquibase.changeset.ChangeSetService;
 import liquibase.changeset.ChangeSetServiceFactory;
 import liquibase.database.Database;
@@ -31,6 +33,7 @@ import liquibase.resource.ResourceAccessor;
 import liquibase.servicelocator.LiquibaseService;
 import liquibase.util.FileUtil;
 import liquibase.util.StringUtil;
+import org.apache.commons.io.FilenameUtils;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -367,7 +370,9 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
                 new LabelChangeSetFilter(labelExpression)
         );
 
-        ValidatingVisitor validatingVisitor = new ValidatingVisitor(database.getRanChangeSetList());
+        ValidatingVisitorGeneratorFactory validatingVisitorGeneratorFactory = Scope.getCurrentScope().getSingleton(ValidatingVisitorGeneratorFactory.class);
+        ValidatingVisitorGenerator generator = validatingVisitorGeneratorFactory.getValidatingVisitorGenerator();
+        ValidatingVisitor validatingVisitor = generator.generateValidatingVisitor(database.getRanChangeSetList());
         validatingVisitor.validate(database, this);
         logIterator.run(validatingVisitor, new RuntimeEnvironment(database, contexts, labelExpression));
 
@@ -531,7 +536,7 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
                         includeContextFilter,
                         labels,
                         ignore,
-                        node.getChildValue(null, MIN_DEPTH, 1),
+                        node.getChildValue(null, MIN_DEPTH, 0),
                         node.getChildValue(null, MAX_DEPTH, Integer.MAX_VALUE),
                         node.getChildValue(null, ENDS_WITH_FILTER, ""),
                         (ModifyChangeSets) nodeScratch.get(MODIFY_CHANGE_SETS));
@@ -998,7 +1003,7 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
                 }
                 changeLog.setIncludeContextFilter(includeContextFilter);
                 changeLog.setIncludeLabels(labels);
-                changeLog.setIncludeIgnore(ignore != null ? ignore.booleanValue() : false);
+                changeLog.setIncludeIgnore(ignore != null && ignore);
             } finally {
                 if (rootChangeLog == null) {
                     ROOT_CHANGE_LOG.remove();
@@ -1082,7 +1087,15 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
             filePath = filePath.substring(1);
         }
 
-        filePath = Paths.get(filePath).normalize().toString();
+        String normalized = FilenameUtils.normalizeNoEndSeparator(filePath);
+        /*
+        Commons IO will return null if the double dot has no parent path segment to work with. In this case,
+        we fall back to path normalization using Paths.get(), which might fail on Windows.
+         */
+        if (normalized == null) {
+            normalized = Paths.get(filePath).normalize().toString();
+        }
+        filePath = normalized;
 
         if (filePath.contains("\\")) {
             filePath = filePath.replace("\\", "/");
