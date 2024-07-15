@@ -15,6 +15,7 @@ import liquibase.exception.ValidationErrors;
 import liquibase.exception.Warnings;
 import liquibase.statement.SqlStatement;
 import liquibase.statement.core.RawCompoundStatement;
+import liquibase.statement.core.RawParameterizedSqlStatement;
 import liquibase.statement.core.RawSqlStatement;
 import liquibase.util.BooleanUtil;
 import liquibase.util.StringUtil;
@@ -290,6 +291,7 @@ public abstract class AbstractSQLChange extends AbstractChange implements DbmsTa
 
         String processedSQL = normalizeLineEndings(sql);
         if (this instanceof RawSQLChange && ((RawSQLChange) this).isRerunnable()) {
+            //For some reason PRINT statement execution is not working properly with PreparedStatement, so we are reverting this change for now.
             returnStatements.add(new RawSqlStatement(processedSQL, getEndDelimiter()));
             return returnStatements.toArray(EMPTY_SQL_STATEMENT);
         }
@@ -310,6 +312,7 @@ public abstract class AbstractSQLChange extends AbstractChange implements DbmsTa
             if (database instanceof Db2zDatabase && escapedStatement.toUpperCase().startsWith("CALL")) {
                 returnStatements.add(new RawCompoundStatement(escapedStatement, getEndDelimiter()));
             } else {
+                //For some reason PRINT statement execution is not working properly with PreparedStatement, so we are reverting this change for now.
                 returnStatements.add(new RawSqlStatement(escapedStatement, getEndDelimiter()));
             }
         }
