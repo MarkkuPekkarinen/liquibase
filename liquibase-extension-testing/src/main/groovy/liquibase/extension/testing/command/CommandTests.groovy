@@ -205,7 +205,7 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
     @Unroll("Run {db:#permutation.databaseName,command:#permutation.definition.commandTestDefinition.joinedCommand} #permutation.definition.description")
     def "run"() {
         setup:
-        Main.runningFromNewCli = true
+        Main.setRunningFromNewCli(true)
         Assumptions.assumeTrue(permutation.testSetupEnvironment.connection != null, "Skipping test: " + permutation.testSetupEnvironment.errorMessage)
 
         def testDef = permutation.definition
@@ -1398,7 +1398,7 @@ Long Description: ${commandDefinition.getLongDescription() ?: "NOT SET"}
         void sendErrorMessage(String message, Throwable exception) {
             errorOutput.println(message)
             if (exception != null) {
-                exception.printStackTrace(errorOutput)
+                exception.printStackTrace(new PrintWriter(errorOutput))
             }
         }
 
