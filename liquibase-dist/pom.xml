@@ -27,7 +27,7 @@
         <db2.version>11.5.9.0</db2.version>
         <firebird.version>5.0.9.java8</firebird.version>
         <slf4j.version>2.0.17</slf4j.version>
-        <liquibase-pro.version>master-SNAPSHOT</liquibase-pro.version>
+        <liquibase-pro.version>4.33.0</liquibase-pro.version>
         <liquibase-checks.version>0-SNAPSHOT</liquibase-checks.version>
         <assemblyConfigFile>src/main/assembly/assembly-bin.xml</assemblyConfigFile>
         <maven.deploy.skip>true</maven.deploy.skip>
@@ -192,13 +192,13 @@
         <dependency>
             <groupId>org.glassfish.jaxb</groupId>
             <artifactId>jaxb-core</artifactId>
-            <version>4.0.5</version>
+            <version>4.0.6</version>
             <optional>true</optional>
         </dependency>
         <dependency>
             <groupId>org.glassfish.jaxb</groupId>
             <artifactId>jaxb-runtime</artifactId>
-            <version>4.0.5</version>
+            <version>4.0.6</version>
             <optional>true</optional>
         </dependency>
         <dependency>
